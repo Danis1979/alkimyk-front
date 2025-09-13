@@ -1,58 +1,64 @@
 import { http } from '../lib/http';
 
-const shape = (data, page, limit) => {
-  const items = Array.isArray(data?.items) ? data.items : (Array.isArray(data) ? data : []);
-  const total = Number.isFinite(data?.total) ? data.total : items.length;
-  return { items, total, page, limit };
-};
+function mapItemsSafe(items = []) {
+  return items.map((r) => ({
+    id: r.id ?? r.ID ?? r.docNumber ?? r.numero ?? Math.random().toString(36).slice(2),
+    date: r.date ?? r.issuedAt ?? r.fecha ?? r.created_at ?? r.createdAt ?? null,
+    client: r.client ?? r.cliente ?? r.customer ?? null,
+    total: Number(r.total ?? r.monto ?? r.amount ?? 0),
+    _raw: r
+  }));
+}
 
-export async function fetchOrders(params = {}) {
-  const limit = Number.isFinite(params.limit) ? params.limit : 20;
-  const page  = Number.isFinite(params.page)  ? params.page  : 1;
+/**
+ * Obtiene lista/paginado. Intenta /orders/search y cae a /orders si hace falta.
+ */
+export async function fetchOrders({ page = 1, limit = 10, q = '', from, to, signal } = {}) {
+  const params = { page, limit };
+  if (q) params.q = q;
+  if (from) params.from = from;
+  if (to) params.to = to;
 
-  const qs = new URLSearchParams();
-  if (params.q)      qs.set('q', params.q);
-  if (params.status) qs.set('status', params.status);
-  if (params.from)   qs.set('from', params.from);
-  if (params.to)     qs.set('to', params.to);
-  qs.set('limit', String(limit));
-  qs.set('page',  String(page));
-
-  // 1) /orders/search
   try {
-    const r = await http.get(`/orders/search?${qs.toString()}`);
-    return shape(r.data, page, limit);
-  } catch (err) {
-    const s = err?.response?.status;
-    // 2) fallback /orders con mismos params ante 404/405/5xx o error de red
-    if (!s || s === 404 || s === 405 || s >= 500) {
-      try {
-        const r2 = await http.get(`/orders?${qs.toString()}`);
-        return shape(r2.data, page, limit);
-      } catch (err2) {
-        console.warn('orders API offline, usando vacío', {
-          s1: s, d1: err?.response?.data,
-          s2: err2?.response?.status, d2: err2?.response?.data
-        });
-        // 3) último recurso: lista vacía para no romper la UI
-        return { items: [], total: 0, page, limit };
-      }
+    const r = await http.get('/orders/search', { params, signal });
+    const data = r.data || {};
+    const total = Number(data.total ?? 0);
+    const items = mapItemsSafe(data.items);
+    const pages = total && limit ? Math.max(1, Math.ceil(total / limit)) : 1;
+    return { total, items, page, limit, pages, meta: data.meta ?? null };
+  } catch (e1) {
+    // fallback
+    try {
+      const r2 = await http.get('/orders', { params, signal });
+      const data = r2.data || {};
+      const total = Number(data.total ?? 0);
+      const items = mapItemsSafe(data.items);
+      const pages = total && limit ? Math.max(1, Math.ceil(total / limit)) : 1;
+      return { total, items, page, limit, pages, meta: data.meta ?? null };
+    } catch (e2) {
+      console.warn('orders API offline, usando vacío –', { e1, e2 });
+      return { total: 0, items: [], page, limit, pages: 1, meta: null };
     }
-    // Si fue un 400/422 real de validación, propagamos
-    throw err;
   }
 }
 
-export async function fetchOrderById(id) {
+/**
+ * Detalle por id (sin magia, deja el _raw para inspección).
+ */
+export async function fetchOrderById(id, { signal } = {}) {
   try {
-    const r = await http.get(`/orders/${encodeURIComponent(id)}`);
-    return r.data;
-  } catch (err) {
-    const s = err?.response?.status;
-    if (!s || s >= 500) {
-      console.warn('orders/:id offline, devolviendo placeholder');
-      return null; // el detalle mostrará "no disponible"
-    }
-    throw err;
+    const r = await http.get(`/orders/${id}`, { signal });
+    const d = r.data || null;
+    if (!d) return null;
+    return {
+      id: d.id ?? id,
+      date: d.date ?? d.issuedAt ?? d.fecha ?? null,
+      client: d.client ?? d.cliente ?? null,
+      total: Number(d.total ?? 0),
+      _raw: d
+    };
+  } catch (e) {
+    console.warn('fetchOrderById failed –', e?.response?.status, e?.response?.data);
+    return null;
   }
 }
