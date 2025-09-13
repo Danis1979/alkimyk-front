@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Link, Navigate } from 'react-router-dom';
 import Dashboard from './pages/Dashboard';
+import OrderDetail from './pages/OrderDetail';
 import Orders from './pages/Orders';
 import Inventory from './pages/Inventory';
 import Receivables from './pages/Receivables';
@@ -20,6 +21,7 @@ export default function App() {
       <Routes>
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/orders" element={<Orders />} />
+        <Route path="/orders/:id" element={<OrderDetail />} />
         <Route path="/inventory" element={<Inventory />} />
         <Route path="/receivables" element={<Receivables />} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
