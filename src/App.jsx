@@ -1,31 +1,39 @@
-import { BrowserRouter, Routes, Route, Link, Navigate } from 'react-router-dom';
+import { StrictMode } from 'react';
+import { BrowserRouter, Routes, Route, NavLink, Navigate } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import Dashboard from './pages/Dashboard';
-import OrderDetail from './pages/OrderDetail';
 import Orders from './pages/Orders';
-import Inventory from './pages/Inventory';
-import Receivables from './pages/Receivables';
+import OrderDetail from './pages/OrderDetail';
 
-export default function App() {
-  const linkStyle = { padding: '6px 10px', borderRadius: 8, textDecoration: 'none', color: '#111827' };
+const qc = new QueryClient();
+
+const Nav = () => (
+  <nav style={{display:'flex',gap:12,alignItems:'center',padding:'8px 12px',borderBottom:'1px solid #e5e7eb'}}>
+    <strong>CMR Alkimyk</strong>
+    <NavLink to="/dashboard">Dashboard</NavLink>
+    <NavLink to="/orders">Pedidos</NavLink>
+    <span style={{color:'#9ca3af'}}>Inventario</span>
+    <span style={{color:'#9ca3af'}}>CxC</span>
+  </nav>
+);
+
+export default function App(){
   return (
-    <BrowserRouter>
-      <nav style={{
-        padding: 12, borderBottom: '1px solid #e5e7eb', display: 'flex', gap: 8, flexWrap: 'wrap',
-        position: 'sticky', top: 0, background: '#fff', zIndex: 10
-      }}>
-        <Link to="/dashboard" style={linkStyle}>Dashboard</Link>
-        <Link to="/orders" style={linkStyle}>Pedidos</Link>
-        <Link to="/inventory" style={linkStyle}>Inventario</Link>
-        <Link to="/receivables" style={linkStyle}>CxC</Link>
-      </nav>
-      <Routes>
-        <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/orders" element={<Orders />} />
-        <Route path="/orders/:id" element={<OrderDetail />} />
-        <Route path="/inventory" element={<Inventory />} />
-        <Route path="/receivables" element={<Receivables />} />
-        <Route path="*" element={<Navigate to="/dashboard" replace />} />
-      </Routes>
-    </BrowserRouter>
+    <StrictMode>
+      <QueryClientProvider client={qc}>
+        <BrowserRouter>
+          <Nav />
+          <div style={{padding:16}}>
+            <Routes>
+              <Route path="/" element={<Navigate to="/dashboard" replace />} />
+              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/orders" element={<Orders />} />
+              <Route path="/orders/:id" element={<OrderDetail />} />
+              <Route path="*" element={<Navigate to="/dashboard" replace />} />
+            </Routes>
+          </div>
+        </BrowserRouter>
+      </QueryClientProvider>
+    </StrictMode>
   );
 }
