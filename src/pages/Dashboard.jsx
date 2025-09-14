@@ -1,40 +1,20 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { http } from '../lib/http.js'; // ajustamos ruta de import (ver archivo http más abajo)
-import { fmtCurrency, fmtNumber } from '../lib/format.js';
+import { http } from '../lib/http';
+import { fmtCurrency, fmtNumber } from '../lib/format';
+import RangeControls from '../components/RangeControls';
+import StatCard from '../components/StatCard';
+
 function useMonthDefaults() {
   const thisMonth = new Date().toISOString().slice(0,7);
   const d = new Date(); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth()-1);
   const lastMonth = d.toISOString().slice(0,7);
   return { lastMonth, thisMonth };
 }
-function RangeControls({ initialFrom, initialTo, onChange }) {
-  const [from, setFrom] = useState(initialFrom);
-  const [to, setTo] = useState(initialTo);
-  return (
-    <div style={{display:'flex',gap:8,alignItems:'center'}}>
-      <label>Desde (YYYY-MM)
-        <input value={from} onChange={e=>setFrom(e.target.value)} placeholder="YYYY-MM" />
-      </label>
-      <label>Hasta (YYYY-MM)
-        <input value={to} onChange={e=>setTo(e.target.value)} placeholder="YYYY-MM" />
-      </label>
-      <button onClick={()=>onChange({from,to})}>Aplicar</button>
-    </div>
-  );
-}
-function StatCard({label,value,hint}) {
-  return (
-    <div style={{border:'1px solid #e5e7eb',borderRadius:8,padding:12}}>
-      <div style={{fontSize:12,color:'#6b7280'}}>{label}</div>
-      <div style={{fontSize:20,fontWeight:600}}>{value}</div>
-      {hint && <div style={{fontSize:12,color:'#9ca3af',marginTop:4}}>{hint}</div>}
-    </div>
-  );
-}
+
 export default function Dashboard() {
   const { lastMonth, thisMonth } = useMonthDefaults();
-  const [range, setRange] = useState({ from: '', to: '' }); // vacío => año en curso
+  const [range, setRange] = useState({ from: '', to: '' }); // vacío = año en curso
 
   const queryKey = useMemo(() => ['kpis', range.from || null, range.to || null], [range]);
   const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
@@ -55,9 +35,10 @@ export default function Dashboard() {
   const topClient = data?.topClient || null;
 
   return (
-    <div style={{fontFamily:'system-ui, -apple-system, Segoe UI, Roboto, sans-serif', maxWidth:1100, margin:'0 auto'}}>
-      <header style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,marginBottom:16}}>
-        <h1 style={{fontSize:28,margin:0}}>Dashboard</h1>
+    <div style={{ fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif', padding: 16, maxWidth: 1100, margin: '0 auto' }}>
+      <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 16 }}>
+        <h1 style={{ fontSize: 28, margin: 0 }}>Dashboard</h1>
+        <small style={{ color: '#6b7280' }}>API_BASE_URL: {http.defaults.baseURL}</small>
       </header>
 
       <section style={{ marginBottom: 16 }}>
@@ -74,8 +55,12 @@ export default function Dashboard() {
         </div>
       </section>
 
-      {isLoading && <div>Cargando KPIs…</div>}
-      {isError   && <div style={{ color: 'crimson' }}>Error: {String(error?.message || 'desconocido')}</div>}
+      {isLoading && <div style={{padding:'8px 0'}}>Cargando KPIs…</div>}
+      {isError   && (
+        <div style={{ background:'#FEF2F2', color:'#991B1B', border:'1px solid #FCA5A5', borderRadius:8, padding:12 }}>
+          Error al cargar KPIs. {String(error?.message || '')}
+        </div>
+      )}
 
       {data && (
         <>
