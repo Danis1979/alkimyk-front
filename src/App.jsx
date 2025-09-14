@@ -1,39 +1,32 @@
-import { StrictMode } from 'react';
-import { BrowserRouter, Routes, Route, NavLink, Navigate } from 'react-router-dom';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import Dashboard from './pages/Dashboard';
-import Orders from './pages/Orders';
-import OrderDetail from './pages/OrderDetail';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import NavBar from './components/NavBar.jsx';
 
-const qc = new QueryClient();
+import Dashboard from './pages/Dashboard.jsx';
+import Orders from './pages/Orders.jsx';
+import OrderDetail from './pages/OrderDetail.jsx';
+import Inventory from './pages/Inventory.jsx';
+import Receivables from './pages/Receivables.jsx';
 
-const Nav = () => (
-  <nav style={{display:'flex',gap:12,alignItems:'center',padding:'8px 12px',borderBottom:'1px solid #e5e7eb'}}>
-    <strong>CMR Alkimyk</strong>
-    <NavLink to="/dashboard">Dashboard</NavLink>
-    <NavLink to="/orders">Pedidos</NavLink>
-    <span style={{color:'#9ca3af'}}>Inventario</span>
-    <span style={{color:'#9ca3af'}}>CxC</span>
-  </nav>
-);
-
-export default function App(){
+export default function App() {
   return (
-    <StrictMode>
-      <QueryClientProvider client={qc}>
-        <BrowserRouter>
-          <Nav />
-          <div style={{padding:16}}>
-            <Routes>
-              <Route path="/" element={<Navigate to="/dashboard" replace />} />
-              <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/orders" element={<Orders />} />
-              <Route path="/orders/:id" element={<OrderDetail />} />
-              <Route path="*" element={<Navigate to="/dashboard" replace />} />
-            </Routes>
-          </div>
-        </BrowserRouter>
-      </QueryClientProvider>
-    </StrictMode>
+    <BrowserRouter>
+      <div style={{fontFamily:'system-ui, -apple-system, Segoe UI, Roboto, sans-serif', minHeight:'100dvh', background:'#fff'}}>
+        <NavBar />
+        <main style={{maxWidth:1200, margin:'0 auto', padding:16}}>
+          <Routes>
+            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/dashboard" element={<Dashboard />} />
+
+            <Route path="/orders" element={<Orders />} />
+            <Route path="/orders/:id" element={<OrderDetail />} />
+
+            <Route path="/inventory" element={<Inventory />} />
+            <Route path="/cxc" element={<Receivables />} />
+
+            <Route path="*" element={<div style={{padding:16}}>Página no encontrada.</div>} />
+          </Routes>
+        </main>
+      </div>
+    </BrowserRouter>
   );
 }
