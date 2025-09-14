@@ -41,3 +41,16 @@ export default function App() {
     </QueryClientProvider>
   );
 }
+import Inventory from './pages/Inventory.jsx';
+import Cxc from './pages/Cxc.jsx';
+
+
+import { Routes, Route } from 'react-router-dom';
+export default function AppWithInvCxc() {
+  return (
+    <Routes>
+      <Route path="/inventory" element={<Inventory/>} />
+      <Route path="/cxc" element={<Cxc/>} />
+    </Routes>
+  );
+}
