@@ -9,6 +9,7 @@ import OrderDetail from './pages/OrderDetail.jsx';
 import Inventory from './pages/Inventory.jsx';
 import Cxc from './pages/Cxc.jsx';
 
+
 const queryClient = new QueryClient();
 
 function Layout({ children }) {
@@ -39,18 +40,5 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <RouterProvider router={router} />
     </QueryClientProvider>
-  );
-}
-import Inventory from './pages/Inventory.jsx';
-import Cxc from './pages/Cxc.jsx';
-
-
-import { Routes, Route } from 'react-router-dom';
-export default function AppWithInvCxc() {
-  return (
-    <Routes>
-      <Route path="/inventory" element={<Inventory/>} />
-      <Route path="/cxc" element={<Cxc/>} />
-    </Routes>
   );
 }
