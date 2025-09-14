@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { http } from '../src/lib/http.js'; // ajustamos ruta de import (ver archivo http más abajo)
-import { fmtCurrency, fmtNumber } from '../src/lib/format.js';
+import { http } from '../lib/http.js'; // ajustamos ruta de import (ver archivo http más abajo)
+import { fmtCurrency, fmtNumber } from '../lib/format.js';
 function useMonthDefaults() {
   const thisMonth = new Date().toISOString().slice(0,7);
   const d = new Date(); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth()-1);
