@@ -11,7 +11,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <BrowserRouter>
       <QueryClientProvider client={queryClient}>
-        <App />
+        <ErrorBoundary><App /></ErrorBoundary>
       </QueryClientProvider>
     </BrowserRouter>
   </React.StrictMode>
