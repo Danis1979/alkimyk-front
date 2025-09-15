@@ -233,28 +233,36 @@ export default function Dashboard() {
           {/* Barras compactas: se adaptan al modo */}
           <section style={{marginTop:12}}>
             <div style={{border:'1px solid #e5e7eb',borderRadius:12,padding:12, background:'#fff'}}>
-              {isBarsLoading ? (
-                <div>Cargando barras…</div>
-              ) : (bars && bars.length) ? (
-                <>
-                  <MiniBars
-                    values={bars.map(b=>b.net)}
-                    labels={bars.map(b=>b.label)}
-                    height={64}
-                    barWidth={14}
-                    gap={6}
-                  />
-                  <div style={{display:'flex',gap:8,flexWrap:'wrap',fontSize:12,color:'#6b7280',marginTop:6}}>
-                    {bars.map((x,i)=>(
-                      <span key={i} title={fmtCurrency(x.net)}>{x.label}</span>
-                    ))}
-                  </div>
-                </>
-              ) : (
-                <div style={{ color: '#6b7280' }}>(Sin datos para graficar)</div>
-              )}
-            </div>
-          </section>
+              
+  <section style={{marginTop:12}}>
+    <div style={{border:'1px solid #e5e7eb',borderRadius:12,padding:12, background:'#fff'}}>
+      {isBarsLoading ? (
+        <div>Cargando barras…</div>
+      ) : (bars && bars.length) ? (
+        <>
+          {/* Contenedor fijo: no "salta" entre 6m/12m/etc. */}
+          <div style={{maxWidth:520}}>
+            <MiniBars
+              values={bars.map(b=>b.net)}
+              labels={bars.map(b=>b.label)}
+              height={72}
+              barWidth={12}
+              gap={6}
+              stretch={false}
+            />
+          </div>
+          <div style={{display:'flex',gap:8,flexWrap:'wrap',fontSize:12,color:'#6b7280',marginTop:6}}>
+            {bars.map((x,i)=>(
+              <span key={i} title={fmtCurrency(x.net)}>{x.label}</span>
+            ))}
+          </div>
+        </>
+      ) : (
+        <div style={{ color: '#6b7280' }}>(Sin datos para graficar)</div>
+      )}
+    </div>
+  </section>
+  
 
           {/* Top cliente */}
           <section style={{marginTop:12}}>
