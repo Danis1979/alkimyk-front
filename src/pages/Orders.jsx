@@ -33,12 +33,12 @@ export default function Orders() {
   };
 
   const { sort, toggle } = useSortParam();
-  const { data } = useQuery({
+  const { data: ordersData } = useQuery({
     queryKey: ["orders.search", { sort }],
     queryFn: () => fetchOrdersSearch({ page: 1, limit: 20, sort }),
     keepPreviousData: true,
   });
-  const items = data?.items ?? [];
+  const items = ordersData?.items ?? [];
   return (
     <div style={{fontFamily:'system-ui,-apple-system,Segoe UI,Roboto,sans-serif',padding:16,maxWidth:1200,margin:'0 auto'}}>
       <header style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12,flexWrap:'wrap',gap:8}}>
