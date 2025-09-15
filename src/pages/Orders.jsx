@@ -33,6 +33,7 @@ export default function Orders() {
   };
 
   const { sort, toggle } = useSortParam();
+  const icon = (k) => (sort === k ? " \u2191" : (sort === ("-" + k) ? " \u2193" : ""));
   const { data: ordersData } = useQuery({
     queryKey: ["orders.search", { sort }],
     queryFn: () => fetchOrdersSearch({ page: 1, limit: 20, sort }),
@@ -72,7 +73,7 @@ export default function Orders() {
           <table style={{width:'100%',marginTop:12,borderCollapse:'collapse'}}>
             <thead>
               <tr style={{textAlign:'left',borderBottom:'1px solid #e5e7eb'}}>
-                <th>ID</th><th><button type="button" className="underline" onClick={() => toggle("date")}><button type="button" className="underline" onClick={() => toggle("date")}>Fecha</button></button></th><th><button type="button" className="underline" onClick={() => toggle("client")}><button type="button" className="underline" onClick={() => toggle("client")}>Cliente</button></button></th><th><button type="button" className="underline" onClick={() => toggle("total")}><button type="button" className="underline" onClick={() => toggle("total")}>Total</button></button></th><th></th>
+                <th>ID</th><th><button type="button" className="underline" onClick={() => toggle("date")}><button type="button" className="underline" onClick={() => toggle("date")}>Fecha{icon("date")}</button></button></th><th><button type="button" className="underline" onClick={() => toggle("client")}><button type="button" className="underline" onClick={() => toggle("client")}>Cliente{icon("client")}</button></button></th><th><button type="button" className="underline" onClick={() => toggle("total")}><button type="button" className="underline" onClick={() => toggle("total")}>Total{icon("total")}</button></button></th><th></th>
               </tr>
             </thead>
             <tbody>
