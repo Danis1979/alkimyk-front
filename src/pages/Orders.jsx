@@ -80,7 +80,7 @@ export default function Orders() {
 
       {err && <div style={{color:'crimson', marginBottom:8}}>{err}</div>}
 
-      <div style={{overflow:auto}}>
+      <div style={{overflow: 'auto'}}>
         <table style={{width:'100%', borderCollapse:'collapse'}}>
           <thead>
             <tr style={{borderBottom:'1px solid #e5e7eb'}}>
