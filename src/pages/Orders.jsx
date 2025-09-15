@@ -1,110 +1,104 @@
-import { useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { fetchOrders } from '../services/orders.service';
 import { fmtCurrency } from '../lib/format';
 
-function useMonthDefaults() {
-  const thisMonth = new Date().toISOString().slice(0,7);
-  const d = new Date(); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth()-1);
-  const lastMonth = d.toISOString().slice(0,7);
-  return { lastMonth, thisMonth };
-}
-
 export default function Orders() {
-  const { lastMonth, thisMonth } = useMonthDefaults();
   const [sp, setSp] = useSearchParams();
   const page  = Number(sp.get('page')  || 1);
   const limit = Number(sp.get('limit') || 10);
+  const q     = sp.get('q')    || '';
   const from  = sp.get('from') || '';
   const to    = sp.get('to')   || '';
-  const q     = sp.get('q')    || '';
 
-  const queryKey = useMemo(()=>['orders', page, limit, from || null, to || null, q || null],[page,limit,from,to,q]);
   const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
-    queryKey,
-    queryFn: ()=> fetchOrders({ page, limit, from, to, q }),
+    queryKey: ['orders', { page, limit, from, to, q }],
+    queryFn:  () => fetchOrders({ page, limit, from, to, q }),
     keepPreviousData: true,
   });
 
-  const total = data?.total || 0;
-  const items = data?.items || [];
-  const totalPages = Math.max(1, Math.ceil(total / limit));
-
-  const setParam = (obj) => {
-    const next = new URLSearchParams(sp);
-    Object.entries(obj).forEach(([k,v])=>{
-      if (v===undefined || v===null || v==='') next.delete(k);
-      else next.set(k, String(v));
+  const onApply = (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    setSp((s) => {
+      s.set('page', '1'); // reinicia paginación
+      s.set('limit', String(fd.get('limit') || 10));
+      const setOrDel = (k) => {
+        const v = String(fd.get(k) || '').trim();
+        if (v) s.set(k, v); else s.delete(k);
+      };
+      setOrDel('q'); setOrDel('from'); setOrDel('to');
+      return s;
     });
-    // reset page si cambian filtros
-    if ('from' in obj || 'to' in obj || 'q' in obj || 'limit' in obj) next.set('page','1');
-    setSp(next, { replace:false });
   };
 
   return (
-    <div style={{ fontFamily:'system-ui, -apple-system, Segoe UI, Roboto, sans-serif', padding:16, maxWidth:1100, margin:'0 auto' }}>
-      <h2 style={{marginTop:0}}>Pedidos</h2>
+    <div style={{fontFamily:'system-ui,-apple-system,Segoe UI,Roboto,sans-serif',padding:16,maxWidth:1200,margin:'0 auto'}}>
+      <header style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12,flexWrap:'wrap',gap:8}}>
+        <h2 style={{margin:0}}>Pedidos</h2>
+        <button onClick={()=>refetch()} disabled={isFetching}>{isFetching ? 'Actualizando…' : 'Actualizar'}</button>
+      </header>
 
-      <div style={{display:'grid',gridTemplateColumns:'repeat(5, minmax(0,1fr))',gap:8,alignItems:'end', marginBottom:12}}>
-        <label>Desde (YYYY-MM)
-          <input placeholder={lastMonth} value={from} onChange={(e)=>setParam({from:e.target.value})}/>
+      <form onSubmit={onApply} style={{display:'grid',gridTemplateColumns:'repeat(5,minmax(0,1fr))',gap:8,alignItems:'end'}}>
+        <label>Buscar
+          <input name="q" defaultValue={q} placeholder="Cliente o ID" />
         </label>
-        <label>Hasta (YYYY-MM)
-          <input placeholder={thisMonth} value={to} onChange={(e)=>setParam({to:e.target.value})}/>
+        <label>Desde
+          <input name="from" defaultValue={from} placeholder="YYYY-MM" />
         </label>
-        <label>Buscar (cliente / id)
-          <input value={q} onChange={(e)=>setParam({q:e.target.value})}/>
+        <label>Hasta
+          <input name="to" defaultValue={to} placeholder="YYYY-MM" />
         </label>
         <label>Por página
-          <select value={limit} onChange={(e)=>setParam({limit: Number(e.target.value)})}>
-            <option>5</option><option>10</option><option>20</option>
-          </select>
+          <input name="limit" type="number" min="5" step="5" defaultValue={limit} />
         </label>
         <div>
-          <button onClick={()=>refetch()} disabled={isFetching}>
-            {isFetching ? 'Actualizando…' : 'Aplicar / Actualizar'}
-          </button>
+          <button type="submit">Aplicar</button>
         </div>
-      </div>
+      </form>
 
-      {isLoading && <div>Cargando…</div>}
-      {isError && <div style={{color:'crimson'}}>Error: {String(error?.message||'')}</div>}
+      {isLoading && <div style={{marginTop:12}}>Cargando…</div>}
+      {isError   && <div style={{marginTop:12,color:'crimson'}}>Error: {String(error?.message||'')}</div>}
 
-      {!isLoading && items.length === 0 && <div style={{color:'#6b7280'}}>(Sin resultados)</div>}
-
-      {items.length > 0 && (
+      {data && (
         <>
-          <table width="100%" cellPadding="8" style={{borderCollapse:'collapse'}}>
+          <table style={{width:'100%',marginTop:12,borderCollapse:'collapse'}}>
             <thead>
-              <tr style={{borderBottom:'1px solid #e5e7eb', textAlign:'left'}}>
+              <tr style={{textAlign:'left',borderBottom:'1px solid #e5e7eb'}}>
                 <th>ID</th><th>Fecha</th><th>Cliente</th><th>Total</th><th></th>
               </tr>
             </thead>
             <tbody>
-              {items.map(it=>{
-                const raw = it._raw || it;
-                const dt = raw.date || raw.created_at || raw.fecha;
-                const dstr = dt ? new Date(dt).toLocaleDateString('es-AR') : '';
+              {(data.items||[]).map(row => {
+                const d = row.date ? new Date(row.date).toLocaleDateString('es-AR') : '';
                 return (
-                  <tr key={raw.id} style={{borderBottom:'1px solid #f3f4f6'}}>
-                    <td>{raw.id}</td>
-                    <td>{dstr}</td>
-                    <td>{raw.client || raw.cliente || '(s/d)'}</td>
-                    <td>{fmtCurrency(raw.total || 0)}</td>
-                    <td><Link to={`/orders/${raw.id}`}>Ver</Link></td>
+                  <tr key={row.id} style={{borderBottom:'1px solid #f3f4f6'}}>
+                    <td>{row.id}</td>
+                    <td>{d}</td>
+                    <td>{row.client || '(s/d)'}</td>
+                    <td>{fmtCurrency(row.total || 0)}</td>
+                    <td><Link to={`/orders/${row.id}`}>Ver</Link></td>
                   </tr>
                 );
               })}
+              {(!data.items || data.items.length === 0) && (
+                <tr><td colSpan={5} style={{color:'#6b7280',padding:8}}>(Sin resultados)</td></tr>
+              )}
             </tbody>
           </table>
 
-          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:12}}>
-            <div style={{color:'#6b7280'}}>Total: {total}</div>
+          <div style={{display:'flex',justifyContent:'space-between',marginTop:12}}>
+            <div>Total: {data.total ?? 0}</div>
             <div style={{display:'flex',gap:8,alignItems:'center'}}>
-              <button onClick={()=> setParam({page: Math.max(1, page-1)})} disabled={page<=1}>← Anterior</button>
-              <span>Página {page} / {totalPages}</span>
-              <button onClick={()=> setParam({page: Math.min(totalPages, page+1)})} disabled={page>=totalPages}>Siguiente →</button>
+              <button
+                disabled={page <= 1}
+                onClick={()=>setSp(s => { s.set('page', String(Math.max(1, page - 1))); return s; })}
+              >← Anterior</button>
+              <span>Página {page}</span>
+              <button
+                disabled={(data.items||[]).length < limit}
+                onClick={()=>setSp(s => { s.set('page', String(page + 1)); return s; })}
+              >Siguiente →</button>
             </div>
           </div>
         </>
