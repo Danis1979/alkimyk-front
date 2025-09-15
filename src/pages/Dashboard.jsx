@@ -5,97 +5,67 @@ import { http } from '../lib/http.js';
 import { fmtCurrency, fmtNumber } from '../lib/format.js';
 import Sparkline from '../components/Sparkline.jsx';
 
-// utilidades de fecha
+// Helpers de fecha
 function monthStr(d) { return d.toISOString().slice(0,7); } // YYYY-MM
 function firstOfMonthUTC(y, m) { return new Date(Date.UTC(y, m, 1)); }
 
-function RangeControls({ value, onChange }) {
-  const [from, setFrom] = useState(value.from || '');
-  const [to, setTo] = useState(value.to || '');
-  useEffect(() => { setFrom(value.from||''); setTo(value.to||''); }, [value]);
-  return (
-    <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}>
-      <label>Desde (YYYY-MM){' '}
-        <input value={from} onChange={e=>setFrom(e.target.value)} placeholder="YYYY-MM" />
-      </label>
-      <label>Hasta (YYYY-MM){' '}
-        <input value={to} onChange={e=>setTo(e.target.value)} placeholder="YYYY-MM" />
-      </label>
-      <button onClick={()=>onChange({from, to})}>Aplicar</button>
-    </div>
-  );
-}
-
-function PresetsBar({ onPreset, showRaw, setShowRaw, showDebug, setShowDebug }) {
-  const btn = { padding:'6px 10px', border:'1px solid #e5e7eb', borderRadius:8, background:'#fff', cursor:'pointer' };
-  const now = new Date();
-  return (
-    <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}>
-      <button style={btn} onClick={()=>onPreset('6m')}>Últimos 6M</button>
-      <button style={btn} onClick={()=>onPreset('1y')}>Último año</button>
-      <button style={btn} onClick={()=>onPreset('ytd')}>Año actual</button>
-      <button style={btn} onClick={()=>onPreset('all')}>Todo</button>
-      <label style={{marginLeft:8}}>
-        <input type="checkbox" checked={showRaw} onChange={e=>setShowRaw(e.target.checked)} /> Crudo
-      </label>
-      <label>
-        <input type="checkbox" checked={showDebug} onChange={e=>setShowDebug(e.target.checked)} /> Ver JSON
-      </label>
-      <span style={{fontSize:12,color:'#6b7280', marginLeft:8}}>
-        {now.toLocaleDateString('es-AR')}
-      </span>
-    </div>
-  );
-}
-
 export default function Dashboard() {
   const [sp, setSp] = useSearchParams();
+
+  // Modo de período: 6m | 1y | ytd | all | custom
+  const initialMode = sp.get('mode') || '6m';
   const initialRange = { from: sp.get('from') || '', to: sp.get('to') || '' };
 
+  const [mode, setMode] = useState(initialMode);
   const [range, setRange] = useState(initialRange);
+  const [custom, setCustom] = useState({ from: initialRange.from, to: initialRange.to });
   const [lastUpdated, setLastUpdated] = useState(null);
-  const [showRaw, setShowRaw] = useState(false);
-  const [showDebug, setShowDebug] = useState(false);
 
-  // Restaurar toggles + rango guardado
-  useEffect(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem('dash.range') || 'null');
-      if (saved && (saved.from || saved.to)) setRange({ from: saved.from||'', to: saved.to||'' });
-      const sRaw = localStorage.getItem('dash.showRaw');   setShowRaw(sRaw === '1');
-      const sDbg = localStorage.getItem('dash.showDebug'); setShowDebug(sDbg === '1');
-    } catch {}
-  }, []);
-
-  // Sync URL + localStorage al cambiar rango
+  // Sincronizar URL con modo/rango
   useEffect(() => {
     const s = new URLSearchParams();
+    s.set('mode', mode);
     if (range.from) s.set('from', range.from);
     if (range.to)   s.set('to',   range.to);
-    setSp(s, { replace:true });
+    setSp(s, { replace: true });
     localStorage.setItem('dash.range', JSON.stringify(range));
-  }, [range, setSp]);
+    localStorage.setItem('dash.mode', mode);
+  }, [mode, range, setSp]);
 
-  useEffect(() => { localStorage.setItem('dash.showRaw',  showRaw ? '1' : '0'); }, [showRaw]);
-  useEffect(() => { localStorage.setItem('dash.showDebug', showDebug ? '1' : '0'); }, [showDebug]);
+  // Restaurar guardado (si existe)
+  useEffect(() => {
+    try {
+      const m = localStorage.getItem('dash.mode');
+      const r = JSON.parse(localStorage.getItem('dash.range') || 'null');
+      if (!sp.get('mode') && m) setMode(m);
+      if (!sp.get('from') && !sp.get('to') && r && (r.from || r.to)) {
+        setRange({ from: r.from || '', to: r.to || '' });
+        setCustom({ from: r.from || '', to: r.to || '' });
+      }
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  function applyPreset(kind) {
+  // Aplicar preset según modo
+  useEffect(() => {
     const now = new Date();
     const y = now.getUTCFullYear();
     const m = now.getUTCMonth();
-    if (kind === '6m') {
+    if (mode === '6m') {
       const fromDate = firstOfMonthUTC(y, m - 5);
       setRange({ from: monthStr(fromDate), to: monthStr(now) });
-    } else if (kind === '1y') {
+    } else if (mode === '1y') {
       const fromDate = firstOfMonthUTC(y, m - 11);
       setRange({ from: monthStr(fromDate), to: monthStr(now) });
-    } else if (kind === 'ytd') {
+    } else if (mode === 'ytd') {
       const fromDate = firstOfMonthUTC(y, 0);
       setRange({ from: monthStr(fromDate), to: monthStr(now) });
-    } else if (kind === 'all') {
+    } else if (mode === 'all') {
       setRange({ from: '', to: '' });
+    } else if (mode === 'custom') {
+      // deja el rango como esté (se aplica con el botón)
     }
-  }
+  }, [mode]);
 
   // KPIs del rango (cards)
   const queryKey = useMemo(() => ['kpis', range.from || null, range.to || null], [range]);
@@ -113,7 +83,7 @@ export default function Dashboard() {
   });
   useEffect(() => { if (!isFetching && data) setLastUpdated(new Date().toLocaleString('es-AR')); }, [isFetching, data]);
 
-  // Serie 6M (neto por mes, calculado con 6 requests a /reports/kpis)
+  // Serie fija de 6 meses para sparkline (independiente del rango de cards)
   const { data: series6 = [], isLoading: isSeriesLoading } = useQuery({
     queryKey: ['kpisSeries6m'],
     queryFn: async () => {
@@ -145,27 +115,35 @@ export default function Dashboard() {
   const net       = Number(totals.net || (sales - purchases));
   const top       = data?.topClient || null;
 
-  const money = (n) => showRaw ? fmtNumber(n) : fmtCurrency(n);
+  const money = (n) => fmtCurrency(n);
 
   return (
-    <div style={{ fontFamily:'system-ui, -apple-system, Segoe UI, Roboto, sans-serif', padding:16, maxWidth:1200, margin:'0 auto' }}>
-      <header style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
-        <h2 style={{margin:0}}>Dashboard</h2>
-        <div style={{display:'flex',alignItems:'center',gap:12}}>
+    <div style={{ fontFamily:'system-ui, -apple-system, Segoe UI, Roboto, sans-serif', padding:16, maxWidth:1100, margin:'0 auto' }}>
+      {/* Barra superior compacta */}
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,flexWrap:'wrap',marginBottom:12}}>
+        <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+          <select value={mode} onChange={(e)=>setMode(e.target.value)}>
+            <option value="6m">Últimos 6 meses</option>
+            <option value="1y">Último año</option>
+            <option value="ytd">Año en curso</option>
+            <option value="all">Todo</option>
+            <option value="custom">Personalizado…</option>
+          </select>
+          {mode === 'custom' && (
+            <>
+              <input type="month" value={custom.from||''} onChange={(e)=>setCustom(c=>({...c,from:e.target.value}))} />
+              <input type="month" value={custom.to||''}   onChange={(e)=>setCustom(c=>({...c,to:e.target.value}))} />
+              <button onClick={()=>setRange({ from: custom.from||'', to: custom.to||'' })}>Aplicar</button>
+            </>
+          )}
+        </div>
+        <div style={{display:'flex',gap:10,alignItems:'center'}}>
           <small style={{color:'#6b7280'}}>Actualizado: {lastUpdated ?? '—'}</small>
           <button onClick={()=>refetch()} disabled={isFetching}>{isFetching? 'Actualizando…' : 'Actualizar'}</button>
         </div>
-      </header>
+      </div>
 
-      <section style={{display:'grid', gap:10, marginBottom:12}}>
-        <PresetsBar
-          onPreset={applyPreset}
-          showRaw={showRaw} setShowRaw={setShowRaw}
-          showDebug={showDebug} setShowDebug={setShowDebug}
-        />
-        <RangeControls value={range} onChange={setRange} />
-      </section>
-
+      {/* Cards limpias */}
       {isLoading ? (
         <div>Cargando KPIs…</div>
       ) : isError ? (
@@ -187,32 +165,33 @@ export default function Dashboard() {
             </div>
           </section>
 
-          <section style={{marginTop:16}}>
-            <h3 style={{margin:'12px 0 8px'}}>Tendencia (últimos 6 meses)</h3>
-            <div style={{border:'1px solid #e5e7eb',borderRadius:12,padding:12, background:'#fff'}}>
+          {/* Sparkline compacto */}
+          <section style={{marginTop:12}}>
+            <div style={{border:'1px solid #e5e7eb',borderRadius:12,padding:10, background:'#fff'}}>
               {isSeriesLoading ? (
-                <div>Cargando serie…</div>
+                <div>Cargando tendencia…</div>
               ) : series6 && series6.length ? (
-                <>
+                <div style={{display:'grid',gridTemplateColumns:'1fr auto',alignItems:'center',gap:8}}>
                   <Sparkline
                     data={series6.map(x=>x.net)}
                     labels={series6.map(x=>x.label)}
-                    height={56}
+                    height={36}
                   />
-                  <div style={{display:'flex',gap:8,flexWrap:'wrap',fontSize:12,color:'#6b7280',marginTop:8}}>
+                  <div style={{display:'flex',gap:8,flexWrap:'wrap',fontSize:12,color:'#6b7280'}}>
                     {series6.map((x,i)=>(
                       <span key={i} title={money(x.net)}>{x.label}</span>
                     ))}
                   </div>
-                </>
+                </div>
               ) : (
                 <div style={{ color: '#6b7280' }}>(Sin datos para graficar)</div>
               )}
             </div>
           </section>
 
-          <section style={{marginTop:16}}>
-            <h3 style={{margin:'12px 0 8px'}}>Top cliente</h3>
+          {/* Top cliente */}
+          <section style={{marginTop:12}}>
+            <h3 style={{margin:'0 0 8px', fontSize:16}}>Top cliente</h3>
             {top ? (
               <div style={{border:'1px solid #e5e7eb',borderRadius:12,padding:12,display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,flexWrap:'wrap', background:'#fff'}}>
                 <div>
@@ -221,7 +200,7 @@ export default function Dashboard() {
                 </div>
                 <div>
                   <div style={{fontSize:12,color:'#6b7280'}}>Ingresos</div>
-                  <div style={{fontWeight:600}}>{money(top.revenue)}</div>
+                  <div style={{fontWeight:600}}>{fmtCurrency(top.revenue)}</div>
                 </div>
                 <div>
                   <div style={{fontSize:12,color:'#6b7280'}}>Ventas</div>
@@ -229,7 +208,7 @@ export default function Dashboard() {
                 </div>
                 <div>
                   <div style={{fontSize:12,color:'#6b7280'}}>Ticket prom.</div>
-                  <div style={{fontWeight:600}}>{money(top.avgTicket)}</div>
+                  <div style={{fontWeight:600}}>{fmtCurrency(top.avgTicket)}</div>
                 </div>
               </div>
             ) : (
@@ -237,14 +216,13 @@ export default function Dashboard() {
             )}
           </section>
 
-          {showDebug && (
-            <details style={{marginTop:16}}>
-              <summary>Ver JSON (debug)</summary>
-              <pre style={{ marginTop: 8, background: '#f9fafb', padding: 12, borderRadius: 8, overflow: 'auto' }}>
-                {JSON.stringify(data, null, 2)}
-              </pre>
-            </details>
-          )}
+          {/* Debug opcional */}
+          <details style={{marginTop:12}}>
+            <summary>Ver JSON (debug)</summary>
+            <pre style={{ marginTop: 8, background: '#f9fafb', padding: 12, borderRadius: 8, overflow: 'auto' }}>
+              {JSON.stringify(data, null, 2)}
+            </pre>
+          </details>
         </>
       )}
     </div>

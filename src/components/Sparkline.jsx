@@ -1,11 +1,11 @@
 import React from 'react';
 
 /**
- * Sparkline simple
+ * Sparkline simple y liviano (sin dependencias)
  * props:
  *  - data: number[]
  *  - labels?: string[]
- *  - height?: number (default 48)
+ *  - height?: number (default 36)
  *  - stroke?: string (default azul)
  *  - fill?: string (default azul suave)
  *  - thickness?: number (default 2)
@@ -13,14 +13,14 @@ import React from 'react';
 export default function Sparkline({
   data = [],
   labels = [],
-  height = 48,
+  height = 36,
   stroke = '#2563eb',
   fill = 'rgba(37,99,235,0.08)',
   thickness = 2,
 }) {
   const n = data.length;
   const h = Math.max(height, 24);
-  const step = 28;                 // ancho por punto
+  const step = 22;                 // ancho por punto (compacto)
   const w = Math.max((n - 1) * step, 120);
 
   const max = Math.max(...data, 0);
@@ -35,20 +35,16 @@ export default function Sparkline({
   });
 
   const pathD = points.map(([x, y], i) => (i ? 'L' : 'M') + x.toFixed(1) + ',' + y.toFixed(1)).join(' ');
-  const areaD = pathD
-    ? pathD + ` L ${w},${h} L 0,${h} Z`
-    : '';
+  const areaD = pathD ? pathD + ` L ${w},${h} L 0,${h} Z` : '';
 
   return (
-    <svg width="100%" viewBox={`0 0 ${w} ${h}`} role="img" aria-label="Tendencia 6 meses">
+    <svg width="100%" viewBox={`0 0 ${w} ${h}`} role="img" aria-label="Tendencia">
       {areaD && <path d={areaD} fill={fill} stroke="none" />}
       {pathD && <path d={pathD} fill="none" stroke={stroke} strokeWidth={thickness} />}
       {points.map(([x, y], i) => (
         <g key={i}>
-          <circle cx={x} cy={y} r="2.5" fill={stroke} />
-          <title>
-            {(labels[i] ?? `#${i+1}`)} — {String(data[i])}
-          </title>
+          <circle cx={x} cy={y} r="2" fill={stroke} />
+          <title>{(labels[i] ?? `#${i+1}`)} — {String(data[i])}</title>
         </g>
       ))}
     </svg>
