@@ -1,93 +1,112 @@
-import { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { http } from '../lib/http.js';
 import { fmtCurrency, fmtNumber } from '../lib/format.js';
-import MiniBars from '../components/MiniBars.jsx';
 
-// Helpers de fechas
-const yyyymm = (d)=> d.toISOString().slice(0,7);                          // YYYY-MM
-const firstUTC = (y,m)=> new Date(Date.UTC(y, m, 1));
-const addMonths = (d, delta)=> firstUTC(d.getUTCFullYear(), d.getUTCMonth()+delta);
-const nextMonth = (yyyy_mm)=>{
-  const [y,m] = yyyy_mm.split('-').map(Number);
-  return yyyymm(firstUTC(y, m)); // siguiente al inicio del mes actual
-};
-function monthsBetween(fromYYYYMM, toYYYYMM) {
-  if (!fromYYYYMM || !toYYYYMM) return [];
-  const [fy,fm] = fromYYYYMM.split('-').map(Number);
-  const [ty,tm] = toYYYYMM.split('-').map(Number);
-  let d = firstUTC(fy, fm);
-  const end = firstUTC(ty, tm);
-  const out = [];
-  // incluir "from" y avanzar hasta "to" exclusivo (intervalos [from, nextMonth))
-  while (d < end) {
-    const label = yyyymm(d);
-    out.push(label);
-    d = addMonths(d, 1);
+/* ErrorBoundary local por si algo rompe la UI */
+class ErrorBoundary extends React.Component {
+  constructor(props){ super(props); this.state = { hasError:false, err:null }; }
+  static getDerivedStateFromError(err){ return { hasError:true, err }; }
+  componentDidCatch(err, info){ console.error('ErrorBoundary:', err, info); }
+  render(){
+    if (this.state.hasError) {
+      return (
+        <div style={{padding:16, color:'#b91c1c', background:'#FEF2F2', border:'1px solid #FEE2E2', borderRadius:8}}>
+          <strong>Ocurrió un error en la UI</strong>
+          <div style={{marginTop:6, fontSize:13}}>{String(this.state.err?.message || this.state.err || 'Error')}</div>
+        </div>
+      );
+    }
+    return this.props.children;
   }
-  // si from == to, devolvemos un mes
-  if (!out.length && fromYYYYMM === toYYYYMM) out.push(fromYYYYMM);
-  return out;
 }
 
-export default function Dashboard() {
+/* Utilidades de fechas (UTC, formato YYYY-MM) */
+function ymOf(date){
+  const y = date.getUTCFullYear();
+  const m = String(date.getUTCMonth()+1).padStart(2,'0');
+  return `${y}-${m}`;
+}
+function addMonthsUTC(d, delta){
+  const x = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
+  x.setUTCMonth(x.getUTCMonth()+delta);
+  return x;
+}
+function usePeriodDefaults(){
+  const now = new Date();
+  const thisMonth = ymOf(now);
+  const last6mFrom = ymOf(addMonthsUTC(now, -5));  // incluye el mes actual → 6 puntos
+  const lastYearFrom = ymOf(addMonthsUTC(now, -11)); // 12 meses
+  const yearStart = `${now.getUTCFullYear()}-01`;
+  return { thisMonth, last6mFrom, lastYearFrom, yearStart };
+}
+
+/* Botón compacto */
+function Btn({active, onClick, children}){
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        padding:'6px 10px', border:'1px solid #e5e7eb', borderRadius:6, fontSize:13,
+        background: active ? '#111827' : '#fff', color: active ? '#fff' : '#111827',
+        cursor:'pointer'
+      }}
+    >{children}</button>
+  );
+}
+
+/* Mini barras: Ventas vs Compras (estable: 72px de alto siempre) */
+function MiniBars({ sales=0, purchases=0 }){
+  const max = Math.max(1, sales, purchases);
+  const sH = Math.round((sales/max)*100);
+  const pH = Math.round((purchases/max)*100);
+  return (
+    <div style={{height:72, display:'flex', alignItems:'end', gap:12, padding:'8px 0'}}>
+      <div style={{flex:'0 0 36px'}}>
+        <div title={`Ventas: ${fmtCurrency(sales)}`} style={{height:`${sH}%`, background:'#1D4ED8', borderRadius:'6px 6px 0 0'}}/>
+        <div style={{fontSize:11, color:'#6b7280', textAlign:'center', marginTop:4}}>Ventas</div>
+      </div>
+      <div style={{flex:'0 0 36px'}}>
+        <div title={`Compras: ${fmtCurrency(purchases)}`} style={{height:`${pH}%`, background:'#059669', borderRadius:'6px 6px 0 0'}}/>
+        <div style={{fontSize:11, color:'#6b7280', textAlign:'center', marginTop:4}}>Compras</div>
+      </div>
+    </div>
+  );
+}
+
+export default function Dashboard(){
+  const { thisMonth, last6mFrom, lastYearFrom, yearStart } = usePeriodDefaults();
   const [sp, setSp] = useSearchParams();
 
-  // Presets: 6m | 1y | ytd | all | custom
-  const [mode, setMode] = useState(sp.get('mode') || '6m');
-  const [range, setRange] = useState({ from: sp.get('from') || '', to: sp.get('to') || '' });
-  const [custom, setCustom] = useState({ from: range.from, to: range.to });
+  // Estado del rango (sin TypeScript)
+  const [range, setRange] = useState({
+    from: sp.get('from') || '',
+    to:   sp.get('to')   || '',
+  });
   const [lastUpdated, setLastUpdated] = useState(null);
 
-  // Sincronizar URL y localStorage
-  useEffect(() => {
+  // Sincronizar URL + persistir
+  useEffect(()=>{
     const s = new URLSearchParams();
-    s.set('mode', mode);
     if (range.from) s.set('from', range.from);
     if (range.to)   s.set('to',   range.to);
-    setSp(s, { replace: true });
-    localStorage.setItem('dash.mode', mode);
-    localStorage.setItem('dash.range', JSON.stringify(range));
-  }, [mode, range, setSp]);
+    setSp(s, { replace:true });
+    try{ localStorage.setItem('dash.range', JSON.stringify(range)); } catch(_){}
+  }, [range, setSp]);
 
-  // Restaurar guardado (si no hay parámetros en URL)
-  useEffect(() => {
-    try {
-      const lsMode = localStorage.getItem('dash.mode');
-      const lsRange = JSON.parse(localStorage.getItem('dash.range') || 'null');
-      if (!sp.get('mode') && lsMode) setMode(lsMode);
-      if (!sp.get('from') && !sp.get('to') && lsRange && (lsRange.from || lsRange.to)) {
-        setRange(lsRange);
-        setCustom(lsRange);
-      }
-    } catch {}
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // Cargar desde localStorage al iniciar (si la URL viene vacía)
+  useEffect(()=>{
+    if (!sp.get('from') && !sp.get('to')) {
+      try {
+        const saved = JSON.parse(localStorage.getItem('dash.range')||'null');
+        if (saved && (saved.from || saved.to)) setRange({ from: saved.from||'', to: saved.to||'' });
+      } catch(_){}
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Aplicar preset → setRange
-  useEffect(() => {
-    const now = new Date();
-    const y = now.getUTCFullYear();
-    const m = now.getUTCMonth();
-    if (mode === '6m') {
-      const from = yyyymm(firstUTC(y, m-5));
-      setRange({ from, to: yyyymm(now) });
-    } else if (mode === '1y') {
-      const from = yyyymm(firstUTC(y, m-11));
-      setRange({ from, to: yyyymm(now) });
-    } else if (mode === 'ytd') {
-      setRange({ from: yyyymm(firstUTC(y,0)), to: yyyymm(now) });
-    } else if (mode === 'all') {
-      // "Todo": mostrar cards con todo (sin límites) y la serie de 12 meses recientes
-      setRange({ from: '', to: '' });
-    } else if (mode === 'custom') {
-      // se aplica con el botón "Aplicar"
-    }
-  }, [mode]);
-
-  // === KPIs (cards) para el rango actual ===
-  const queryKey = useMemo(() => ['kpis', range.from || null, range.to || null], [range]);
+  const queryKey = useMemo(()=>['kpis', range.from||null, range.to||null], [range]);
   const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
     queryKey,
     queryFn: async () => {
@@ -100,207 +119,123 @@ export default function Dashboard() {
     staleTime: 30_000,
     refetchOnWindowFocus: false,
   });
-  useEffect(() => { if (!isFetching && data) setLastUpdated(new Date().toLocaleString('es-AR')); }, [isFetching, data]);
 
-  // === Serie mensual para el gráfico de barras ===
-  // Se adapta al modo: 6m (6), 1y (12), ytd (1..12), all (12 meses recientes), custom (según rango)
-  const barMonths = useMemo(() => {
-    const now = new Date();
-    if (mode === '6m') {
-      return Array.from({length:6}, (_,i)=> {
-        const d = addMonths(firstUTC(now.getUTCFullYear(), now.getUTCMonth()), -(5-i));
-        return yyyymm(d);
-      });
-    }
-    if (mode === '1y') {
-      return Array.from({length:12}, (_,i)=> {
-        const d = addMonths(firstUTC(now.getUTCFullYear(), now.getUTCMonth()), -(11-i));
-        return yyyymm(d);
-      });
-    }
-    if (mode === 'ytd') {
-      const start = firstUTC(now.getUTCFullYear(), 0);
-      return monthsBetween(yyyymm(start), yyyymm(addMonths(firstUTC(now.getUTCFullYear(), now.getUTCMonth()), 1)));
-    }
-    if (mode === 'all') {
-      return Array.from({length:12}, (_,i)=> {
-        const d = addMonths(firstUTC(now.getUTCFullYear(), now.getUTCMonth()), -(11-i));
-        return yyyymm(d);
-      });
-    }
-    // custom
-    if (custom.from && custom.to) {
-      // cap 18 meses para no reventar la UI
-      const list = monthsBetween(custom.from, custom.to);
-      return list.slice(-18);
-    }
-    return [];
-  }, [mode, custom]);
+  useEffect(()=>{ if (!isFetching && data) setLastUpdated(new Date().toLocaleString('es-AR')); }, [isFetching, data]);
 
-  const { data: bars = [], isLoading: isBarsLoading } = useQuery({
-    queryKey: ['kpisMonthlyBars', mode, barMonths.join(',')],
-    enabled: barMonths.length > 0,
-    queryFn: async () => {
-      const results = await Promise.all(
-        barMonths.map((mm) => {
-          const from = mm;
-          const to   = nextMonth(mm);
-          return http.get('/reports/kpis', { params: { from, to } })
-            .then(r => {
-              const t = r?.data?.totals || {};
-              const net = Number(t.net ?? (Number(t.sales||0) - Number(t.purchases||0)));
-              return { label: mm, net };
-            })
-            .catch(() => ({ label: mm, net: 0 }));
-        })
-      );
-      return results;
-    },
-    staleTime: 30_000,
-    refetchOnWindowFocus: false,
-  });
-
-  // ==== Render ====
   const totals    = data?.totals || {};
   const sales     = Number(totals.sales || 0);
   const purchases = Number(totals.purchases || 0);
   const net       = Number(totals.net || (sales - purchases));
   const top       = data?.topClient || null;
 
-  const money = (n) => fmtCurrency(n);
+  // Handlers de períodos predefinidos
+  const setLast6m = () => setRange({ from: last6mFrom, to: thisMonth });
+  const setLastYear = () => setRange({ from: lastYearFrom, to: thisMonth });
+  const setThisYear = () => setRange({ from: yearStart, to: thisMonth });
+  const setAll = () => setRange({ from:'', to:'' });
 
-  const Btn = ({value, children}) => {
-    const active = mode === value;
-    return (
-      <button
-        onClick={()=>setMode(value)}
-        style={{
-          fontSize:12,padding:'6px 10px',borderRadius:8,cursor:'pointer',
-          border: active ? '1px solid #2563eb' : '1px solid #e5e7eb',
-          background: active ? '#eff6ff' : '#fff',
-          color: active ? '#1d4ed8' : '#111827'
-        }}
-      >{children}</button>
-    );
-  };
-
+  // UI
   return (
-    <div style={{ fontFamily:'system-ui, -apple-system, Segoe UI, Roboto, sans-serif', padding:16, maxWidth:1100, margin:'0 auto' }}>
-      {/* Barra superior: presets + custom */}
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,flexWrap:'wrap',marginBottom:12}}>
-        <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
-          <Btn value="6m">Últimos 6 meses</Btn>
-          <Btn value="1y">Último año</Btn>
-          <Btn value="ytd">Año en curso</Btn>
-          <Btn value="all">Todo</Btn>
-          <span style={{margin:'0 6px',color:'#9ca3af'}}>|</span>
-          <span style={{fontSize:12,color:'#6b7280'}}>Personalizado:</span>
-          <input type="month" value={custom.from||''} onChange={(e)=>setCustom(c=>({...c,from:e.target.value}))} />
-          <input type="month" value={custom.to||''}   onChange={(e)=>setCustom(c=>({...c,to:e.target.value}))} />
-          <button
-            onClick={()=>{ setMode('custom'); setRange({ from: custom.from||'', to: custom.to||'' }); }}
-            style={{fontSize:12,padding:'6px 10px',borderRadius:8,cursor:'pointer',border:'1px solid #e5e7eb',background:'#fff'}}
-          >Aplicar</button>
-        </div>
-        <div style={{display:'flex',gap:10,alignItems:'center'}}>
-          <small style={{color:'#6b7280'}}>Actualizado: {lastUpdated ?? '—'}</small>
-          <button onClick={()=>refetch()} disabled={isFetching}>{isFetching? 'Actualizando…' : 'Actualizar'}</button>
-        </div>
-      </div>
+    <ErrorBoundary>
+      <div style={{ fontFamily:'system-ui,-apple-system,Segoe UI,Roboto,sans-serif', padding:16, maxWidth:1200, margin:'0 auto' }}>
+        <header style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16}}>
+          <h1 style={{fontSize:20, fontWeight:600}}>Dashboard</h1>
+          <div style={{fontSize:12, color:'#6b7280'}}>Actualizado: {lastUpdated ?? '—'}</div>
+        </header>
 
-      {/* Cards */}
-      {isLoading ? (
-        <div>Cargando KPIs…</div>
-      ) : isError ? (
-        <div style={{color:'crimson'}}>No se pudieron cargar los KPIs: {String(error?.message||'')}</div>
-      ) : (
-        <div>
-<section style={{display:'grid',gridTemplateColumns:'repeat(3,minmax(0,1fr))',gap:12}}>
-            <div style={{border:'1px solid #e5e7eb',borderRadius:12,padding:14, background:'#fff'}}>
-              <div style={{fontSize:12,color:'#6b7280'}}>Ventas</div>
-              <div style={{fontSize:24,fontWeight:700}}>{money(sales)}</div>
-            </div>
-            <div style={{border:'1px solid #e5e7eb',borderRadius:12,padding:14, background:'#fff'}}>
-              <div style={{fontSize:12,color:'#6b7280'}}>Compras</div>
-              <div style={{fontSize:24,fontWeight:700}}>{money(purchases)}</div>
-            </div>
-            <div style={{border:'1px solid #e5e7eb',borderRadius:12,padding:14, background:'#fff'}}>
-              <div style={{fontSize:12,color:'#6b7280'}}>Neto</div>
-              <div style={{fontSize:24,fontWeight:700}}>{money(net)}</div>
-            </div>
-          </section>
-
-          {/* Barras compactas: se adaptan al modo */}
-          <section style={{marginTop:12}}>
-            <div style={{border:'1px solid #e5e7eb',borderRadius:12,padding:12, background:'#fff'}}>
-              
-  <section style={{marginTop:12}}>
-    <div style={{border:'1px solid #e5e7eb',borderRadius:12,padding:12, background:'#fff'}}>
-      {isBarsLoading ? (
-        <div>Cargando barras…</div>
-      ) : (bars && bars.length) ? (
-        <>
-          {/* Contenedor fijo: no "salta" entre 6m/12m/etc. */}
-          <div style={{maxWidth:520}}>
-            <MiniBars
-              values={bars.map(b=>b.net)}
-              labels={bars.map(b=>b.label)}
-              height={72}
-              barWidth={12}
-              gap={6}
-              stretch={false}
-            />
-          </div>
-          <div style={{display:'flex',gap:8,flexWrap:'wrap',fontSize:12,color:'#6b7280',marginTop:6}}>
-            {bars.map((x,i)=>(
-              <span key={i} title={fmtCurrency(x.net)}>{x.label}</span>
-            ))}
+        {/* Barra de período: botones + rango custom + acciones */}
+        <section style={{
+          display:'grid',
+          gridTemplateColumns:'1fr auto auto',
+          gap:12,
+          alignItems:'center',
+          border:'1px solid #e5e7eb',
+          borderRadius:10,
+          padding:12,
+          marginBottom:16,
+          background:'#fff'
+        }}>
+          {/* Botonera */}
+          <div style={{display:'flex', gap:8, flexWrap:'wrap'}}>
+            <Btn active={range.from===last6mFrom && range.to===thisMonth} onClick={setLast6m}>Últimos 6 meses</Btn>
+            <Btn active={range.from===lastYearFrom && range.to===thisMonth} onClick={setLastYear}>Último año</Btn>
+            <Btn active={range.from===yearStart   && range.to===thisMonth} onClick={setThisYear}>Año actual</Btn>
+            <Btn active={!range.from && !range.to} onClick={setAll}>Todo</Btn>
           </div>
 
-        </div>
-) : (
-        <div style={{ color: '#6b7280' }}>(Sin datos para graficar)</div>
-      )}
-    </div>
-  </section>
-  
+          {/* Rango custom */}
+          <div style={{display:'flex', gap:8, alignItems:'center', justifyContent:'flex-end'}}>
+            <label style={{fontSize:12,color:'#374151'}}>Desde
+              <input type="month" value={range.from} onChange={e=>setRange(r=>({...r, from:e.target.value}))}
+                     style={{marginLeft:6, border:'1px solid #e5e7eb', borderRadius:6, padding:'6px 8px'}} />
+            </label>
+            <label style={{fontSize:12,color:'#374151'}}>Hasta
+              <input type="month" value={range.to} onChange={e=>setRange(r=>({...r, to:e.target.value}))}
+                     style={{marginLeft:6, border:'1px solid #e5e7eb', borderRadius:6, padding:'6px 8px'}} />
+            </label>
+          </div>
 
-          {/* Top cliente */}
-          <section style={{marginTop:12}}>
-            <h3 style={{margin:'0 0 8px', fontSize:16}}>Top cliente</h3>
-            {top ? (
-              <div style={{border:'1px solid #e5e7eb',borderRadius:12,padding:12,display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,flexWrap:'wrap', background:'#fff'}}>
-                <div>
-                  <div style={{fontSize:12,color:'#6b7280'}}>Cliente</div>
-                  <div style={{fontWeight:600}}>{top.client}</div>
-                </div>
-                <div>
-                  <div style={{fontSize:12,color:'#6b7280'}}>Ingresos</div>
-                  <div style={{fontWeight:600}}>{fmtCurrency(top.revenue)}</div>
-                </div>
-                <div>
-                  <div style={{fontSize:12,color:'#6b7280'}}>Ventas</div>
-                  <div style={{fontWeight:600}}>{fmtNumber(top.salesCount)}</div>
-                </div>
-                <div>
-                  <div style={{fontSize:12,color:'#6b7280'}}>Ticket prom.</div>
-                  <div style={{fontWeight:600}}>{fmtCurrency(top.avgTicket)}</div>
-                </div>
+          {/* Acciones */}
+          <div style={{display:'flex', gap:8, justifyContent:'flex-end'}}>
+            <button onClick={()=>refetch()} disabled={isFetching}
+                    style={{padding:'6px 10px', border:'1px solid #e5e7eb', borderRadius:6, fontSize:13, background:'#111827', color:'#fff', cursor:'pointer'}}>
+              {isFetching ? 'Actualizando…' : 'Actualizar'}
+            </button>
+          </div>
+        </section>
+
+        {/* Estado de carga/errores */}
+        {isLoading && <div style={{color:'#6b7280'}}>Cargando KPIs…</div>}
+        {isError   && <div style={{color:'#b91c1c'}}>No se pudieron cargar los KPIs: {String(error?.message||'')}</div>}
+
+        {/* Cards + mini barras */}
+        {!isLoading && !isError && (
+          <section>
+            <div style={{
+              display:'grid',
+              gridTemplateColumns:'repeat(4, minmax(0, 1fr))',
+              gap:12,
+              marginBottom:12
+            }}>
+              <div style={{border:'1px solid #e5e7eb', borderRadius:10, padding:12}}>
+                <div style={{fontSize:12, color:'#6b7280'}}>Ventas</div>
+                <div style={{fontSize:18, fontWeight:600}}>{fmtCurrency(sales)}</div>
               </div>
-            ) : (
-              <div style={{ color: '#6b7280' }}>(Sin datos de top cliente en el período)</div>
-            )}
-          </section>
+              <div style={{border:'1px solid #e5e7eb', borderRadius:10, padding:12}}>
+                <div style={{fontSize:12, color:'#6b7280'}}>Compras</div>
+                <div style={{fontSize:18, fontWeight:600}}>{fmtCurrency(purchases)}</div>
+              </div>
+              <div style={{border:'1px solid #e5e7eb', borderRadius:10, padding:12}}>
+                <div style={{fontSize:12, color:'#6b7280'}}>Neto</div>
+                <div style={{fontSize:18, fontWeight:600}}>{fmtCurrency(net)}</div>
+              </div>
+              <div style={{border:'1px solid #e5e7eb', borderRadius:10, padding:12}}>
+                <div style={{fontSize:12, color:'#6b7280'}}>CxC pendientes</div>
+                <div style={{fontSize:18, fontWeight:600}}>{fmtNumber(Number(data?.receivablesPending||0))}</div>
+              </div>
+            </div>
 
-          {/* Debug opcional */}
-          <details style={{marginTop:12}}>
-            <summary>Ver JSON (debug)</summary>
-            <pre style={{ marginTop: 8, background: '#f9fafb', padding: 12, borderRadius: 8, overflow: 'auto' }}>
-              {JSON.stringify(data, null, 2)}
-            </pre>
-          </details>
-        </>
-      )}
-    </div>
+            {/* Mini barras (estable, 72px) */}
+            <div style={{border:'1px solid #e5e7eb', borderRadius:10, padding:'8px 12px', marginBottom:12, background:'#fff'}}>
+              <div style={{fontSize:12, color:'#6b7280', marginBottom:4}}>Comparativo (Ventas vs Compras)</div>
+              <MiniBars sales={sales} purchases={purchases} />
+            </div>
+
+            {/* Top cliente */}
+            <div style={{border:'1px solid #e5e7eb', borderRadius:10, padding:12, background:'#fff'}}>
+              <div style={{fontSize:12, color:'#6b7280'}}>Top cliente</div>
+              {top ? (
+                <div style={{marginTop:4}}>
+                  <div style={{fontWeight:600}}>{top.client}</div>
+                  <div style={{fontSize:13, color:'#374151'}}>Facturación: {fmtCurrency(Number(top.revenue||0))} · Tickets: {fmtNumber(Number(top.salesCount||0))} · Promedio: {fmtCurrency(Number(top.avgTicket||0))}</div>
+                </div>
+              ) : (
+                <div style={{color:'#6b7280', fontSize:13, marginTop:4}}>(Sin datos)</div>
+              )}
+            </div>
+          </section>
+        )}
+      </div>
+    </ErrorBoundary>
   );
 }
