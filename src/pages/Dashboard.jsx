@@ -31,8 +31,16 @@ function RangeControls({ from, to, onChange }) {
   const [f, setF] = useState(from);
   const [t, setT] = useState(to);
   useEffect(() => { setF(from); setT(to); }, [from, to]);
-  return (
-    <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+  return (<div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,marginBottom:12}}>
+        <div style={{fontSize:13,color:'#6b7280'}}>
+          Actualizado: <strong>{lastUpdated || '—'}</strong>{isFetching ? ' (actualizando...)' : ''}
+        </div>
+        <button onClick={()=>refetch()} disabled={isFetching}
+          style={{padding:'6px 10px',border:'1px solid #e5e7eb',borderRadius:8,background:'#fff',cursor:'pointer'}}>
+          {isFetching ? 'Actualizando…' : 'Actualizar'}
+        </button>
+      </div>
       <label style={{display:'grid',gap:4}}>Desde (YYYY-MM)
         <input value={f} onChange={e=>setF(e.target.value)} placeholder="YYYY-MM" />
       </label>
