@@ -4,6 +4,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { http } from '../lib/http.js';
 import { fmtCurrency, fmtNumber } from '../lib/format.js';
 
+import Sparkline from '../components/Sparkline.jsx';
 function useMonthDefaults() {
   const thisMonth = new Date().toISOString().slice(0,7);
   const d = new Date(); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth()-1);
@@ -45,6 +46,23 @@ function StatCard({label,value,hint}) {
       {hint && <div style={{fontSize:12,color:'#9ca3af',marginTop:6}}>{hint}</div>}
     </div>
   );
+}
+
+function monthAdd(ym) {
+  // ym: 'YYYY-MM' -> next month 'YYYY-MM'
+  const [y,m] = ym.split('-').map(Number);
+  const d = new Date(Date.UTC(y, m-1, 1));
+  d.setUTCMonth(d.getUTCMonth()+1);
+  return d.toISOString().slice(0,7);
+}
+function lastNMonths(n=6) {
+  const now = new Date(); now.setUTCDate(1);
+  const arr = [];
+  for (let i=n-1; i>=0; i--) {
+    const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth()-i, 1));
+    arr.push(d.toISOString().slice(0,7));
+  }
+  return arr; // array 'YYYY-MM'
 }
 
 export default function Dashboard() {
@@ -149,18 +167,41 @@ export default function Dashboard() {
           </div>
 
           <section style={{marginTop:16}}>
-            <h3 style={{margin:'8px 0'}}>Top cliente</h3>
-            {top ? (
-              <div style={{display:'grid',gridTemplateColumns:'repeat(4,minmax(0,1fr))',gap:12,maxWidth:800}}>
-                <StatCard label="Cliente"    value={top.client || '(s/d)'} />
-                <StatCard label="Facturado"  value={fmtCurrency(top.revenue || 0)} />
-                <StatCard label="# Ventas"   value={fmtNumber(top.salesCount || 0)} />
-                <StatCard label="Ticket prom." value={fmtCurrency(top.avgTicket || 0)} />
-              </div>
-            ) : (
-              <div style={{ color: '#6b7280' }}>(Sin datos de top cliente en el período)</div>
-            )}
-          </section>
+  <h3 style={{margin:'8px 0'}}>Neto últimos 6 meses</h3>
+  {isSeriesLoading ? (
+    <div style={{color:'#6b7280'}}>Cargando serie…</div>
+  ) : (
+    <div style={{display:'flex',alignItems:'center',gap:12}}>
+      <Sparkline
+        data={(series||[]).map(x=>x.net)}
+        width={380}
+        height={64}
+        formatter={(n)=> new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS'}).format(n)}
+      />
+      <div style={{fontSize:12,color:'#6b7280'}}>
+        {months.map((m,i)=>(
+          <span key={m} style={{marginRight:8}}>
+            {m}: <strong>{new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS'}).format((series||[])[i]?.net||0)}</strong>
+          </span>
+        ))}
+      </div>
+    </div>
+  )}
+</section>
+
+<section style={{marginTop:16}}>
+  <h3 style={{margin:'8px 0'}}>Top cliente</h3>
+  {top ? (
+    <div style={{display:'grid',gridTemplateColumns:'repeat(4,minmax(0,1fr))',gap:12,maxWidth:800}}>
+      <StatCard label="Cliente"    value={top.client || '(s/d)'} />
+      <StatCard label="Facturado"  value={fmtCurrency(top.revenue || 0)} />
+      <StatCard label="# Ventas"   value={fmtNumber(top.salesCount || 0)} />
+      <StatCard label="Ticket prom." value={fmtCurrency(top.avgTicket || 0)} />
+    </div>
+  ) : (
+    <div style={{ color: '#6b7280' }}>(Sin datos de top cliente en el período)</div>
+  )}
+</section>
 
           {showDebug && (
             <details open style={{marginTop:16}}>
