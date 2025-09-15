@@ -110,7 +110,35 @@ export default function Dashboard() {
     if (!isFetching && data) setLastUpdated(new Date().toLocaleString('es-AR'));
   }, [isFetching, data]);
 
-  const totals    = data?.totals || {};
+  
+  // ---- months (labels) seguro ----
+  const months = (()=>{
+    try {
+      const n = Array.isArray(series) ? series.length : 0;
+      const fromIso = data?.range?.from;
+      const out = [];
+      if (fromIso && n > 0) {
+        const d = new Date(fromIso);
+        for (let i = 0; i < n; i++) {
+          const y = d.getUTCFullYear();
+          const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+          out.push(`${y}-${m}`);
+          d.setUTCMonth(d.getUTCMonth() + 1);
+        }
+      } else {
+        // fallback: últimos 6 meses
+        const d = new Date(); d.setUTCDate(1);
+        for (let i = 5; i >= 0; i--) {
+          const dt = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - i, 1));
+          const y = dt.getUTCFullYear();
+          const m = String(dt.getUTCMonth() + 1).padStart(2, '0');
+          out.push(`${y}-${m}`);
+        }
+      }
+      return out;
+    } catch { return []; }
+  })();
+const totals    = data?.totals || {};
   const sales     = Number(totals.sales || 0);
   const purchases = Number(totals.purchases || 0);
   const net       = Number(totals.net || (sales - purchases));
