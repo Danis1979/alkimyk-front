@@ -32,6 +32,13 @@ export default function Orders() {
     });
   };
 
+  const { sort, toggle } = useSortParam();
+  const { data } = useQuery({
+    queryKey: ["orders.search", { sort }],
+    queryFn: () => fetchOrdersSearch({ page: 1, limit: 20, sort }),
+    keepPreviousData: true,
+  });
+  const items = data?.items ?? [];
   return (
     <div style={{fontFamily:'system-ui,-apple-system,Segoe UI,Roboto,sans-serif',padding:16,maxWidth:1200,margin:'0 auto'}}>
       <header style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12,flexWrap:'wrap',gap:8}}>
@@ -65,7 +72,7 @@ export default function Orders() {
           <table style={{width:'100%',marginTop:12,borderCollapse:'collapse'}}>
             <thead>
               <tr style={{textAlign:'left',borderBottom:'1px solid #e5e7eb'}}>
-                <th>ID</th><th>Fecha</th><th>Cliente</th><th>Total</th><th></th>
+                <th>ID</th><th><button type="button" className="underline" onClick={() => toggle("date")}><button type="button" className="underline" onClick={() => toggle("date")}>Fecha</button></button></th><th><button type="button" className="underline" onClick={() => toggle("client")}><button type="button" className="underline" onClick={() => toggle("client")}>Cliente</button></button></th><th><button type="button" className="underline" onClick={() => toggle("total")}><button type="button" className="underline" onClick={() => toggle("total")}>Total</button></button></th><th></th>
               </tr>
             </thead>
             <tbody>
