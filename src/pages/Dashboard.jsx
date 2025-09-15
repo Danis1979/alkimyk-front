@@ -240,9 +240,13 @@ const totals    = data?.totals || {};
           {showDebug && (
             <details open style={{marginTop:16}}>
               <summary style={{cursor:'pointer'}}>JSON crudo</summary>
-              <pre style={{ marginTop: 8, background: '#f9fafb', padding: 12, borderRadius: 8, overflow: 'auto' }}>
+              {showDebug && (
+
+                <pre style={{ marginTop: 8, background: '#f9fafb', padding: 12, borderRadius: 8, overflow: 'auto' }}>
 {JSON.stringify(data, null, 2)}
               </pre>
+
+              )}
             </details>
           )}
         </>
