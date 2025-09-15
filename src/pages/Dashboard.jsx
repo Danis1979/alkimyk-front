@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 
+
+// shim: serie vacía por defecto
+let series = [];
 // shim: si no hubo alias en useQuery, evitamos ReferenceError
 let isSeriesLoading = false;
 import { useQuery } from '@tanstack/react-query';
