@@ -1,42 +1,19 @@
-import { useEffect, useState } from 'react';
-import { http } from '../lib/http';
+const apiBase = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
+const href = `${apiBase}/reports/stock.csv`;
 
 export default function Inventory() {
-  const api = (http?.defaults?.baseURL || '').replace(/\/$/, '');
-  const url = `${api}/reports/stock.csv`;
-  const [preview, setPreview] = useState('');
-  const [err, setErr] = useState('');
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const r = await fetch(url, { credentials: 'include' });
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        const txt = await r.text();
-        setPreview(txt.split('\n').slice(0, 12).join('\n'));
-      } catch (e) {
-        setErr(String(e));
-      }
-    })();
-  }, [url]);
+  const openNewTab = () => window.open(href, '_blank', 'noopener,noreferrer');
 
   return (
-    <div>
+    <div style={{ fontFamily:'system-ui, -apple-system, Segoe UI, Roboto, sans-serif', padding:16, maxWidth:900, margin:'0 auto' }}>
       <h2 style={{marginTop:0}}>Inventario</h2>
-      <p>Descargá el stock completo en CSV:</p>
-      <a href={url} target="_blank" rel="noreferrer"
-         style={{display:'inline-block',padding:'8px 12px',border:'1px solid #e5e7eb',borderRadius:8,textDecoration:'none'}}>
-        ⬇ Descargar stock.csv
-      </a>
-
-      <h3 style={{marginTop:16}}>Vista previa (primeras filas)</h3>
-      {err ? (
-        <div style={{color:'crimson'}}>No se pudo obtener el CSV: {err}</div>
-      ) : preview ? (
-        <pre style={{background:'#f9fafb',padding:12,borderRadius:8,overflow:'auto'}}>{preview}</pre>
-      ) : (
-        <div>Cargando preview…</div>
-      )}
+      <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+        <a href={href} download style={{textDecoration:'none'}}>
+          <button>⬇ Descargar stock.csv</button>
+        </a>
+        <button onClick={openNewTab}>Abrir en pestaña</button>
+      </div>
+      <p style={{marginTop:12,color:'#6b7280'}}>Exporta el stock actual en CSV para análisis rápido.</p>
     </div>
   );
 }
