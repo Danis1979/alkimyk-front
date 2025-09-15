@@ -90,7 +90,7 @@ export default function Dashboard() {
   const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
     queryKey,
     queryFn: async () => {
-      const params: Record<string,string> = {};
+      const params = {};
       if (range.from) params.from = range.from;
       if (range.to)   params.to   = range.to;
       const { data } = await http.get('/reports/kpis', { params });
