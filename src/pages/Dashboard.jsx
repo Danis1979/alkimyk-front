@@ -4,6 +4,13 @@ import { useQuery } from '@tanstack/react-query';
 import { http } from '../lib/http.js';
 import { fmtCurrency, fmtNumber } from '../lib/format.js';
 
+function monthStr(d) {
+  return d.toISOString().slice(0, 7); // YYYY-MM
+}
+function firstOfMonthUTC(year, monthIndex) {
+  return new Date(Date.UTC(year, monthIndex, 1));
+}
+
 function RangeControls({ value, onChange }) {
   const [from, setFrom] = useState(value.from || '');
   const [to, setTo] = useState(value.to || '');
@@ -21,6 +28,28 @@ function RangeControls({ value, onChange }) {
   );
 }
 
+function PresetsBar({ onPreset, showRaw, setShowRaw, showDebug, setShowDebug }) {
+  const btn = { padding:'6px 10px', border:'1px solid #e5e7eb', borderRadius:8, background:'#fff', cursor:'pointer' };
+  const now = new Date();
+  return (
+    <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}>
+      <button style={btn} onClick={()=>onPreset('6m')}>Últimos 6M</button>
+      <button style={btn} onClick={()=>onPreset('1y')}>Último año</button>
+      <button style={btn} onClick={()=>onPreset('ytd')}>Año actual</button>
+      <button style={btn} onClick={()=>onPreset('all')}>Todo</button>
+      <label style={{marginLeft:8}}>
+        <input type="checkbox" checked={showRaw} onChange={e=>setShowRaw(e.target.checked)} /> Crudo
+      </label>
+      <label>
+        <input type="checkbox" checked={showDebug} onChange={e=>setShowDebug(e.target.checked)} /> Ver JSON
+      </label>
+      <span style={{fontSize:12,color:'#6b7280', marginLeft:8}}>
+        {now.toLocaleDateString('es-AR')}
+      </span>
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const [sp, setSp] = useSearchParams();
   const initialRange = {
@@ -30,6 +59,19 @@ export default function Dashboard() {
 
   const [range, setRange] = useState(initialRange);
   const [lastUpdated, setLastUpdated] = useState(null);
+  const [showRaw, setShowRaw] = useState(false);
+  const [showDebug, setShowDebug] = useState(false);
+
+  // Restaurar toggles desde localStorage (una sola vez)
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('dash.range') || 'null');
+      if (saved && (saved.from || saved.to)) setRange({ from: saved.from||'', to: saved.to||'' });
+      const sRaw = localStorage.getItem('dash.showRaw'); setShowRaw(sRaw === '1');
+      const sDbg = localStorage.getItem('dash.showDebug'); setShowDebug(sDbg === '1');
+    } catch (_) {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Sincronizar a URL + localStorage
   useEffect(() => {
@@ -39,6 +81,27 @@ export default function Dashboard() {
     setSp(s, { replace:true });
     localStorage.setItem('dash.range', JSON.stringify(range));
   }, [range, setSp]);
+
+  useEffect(() => { localStorage.setItem('dash.showRaw',  showRaw ? '1' : '0'); }, [showRaw]);
+  useEffect(() => { localStorage.setItem('dash.showDebug', showDebug ? '1' : '0'); }, [showDebug]);
+
+  function applyPreset(kind) {
+    const now = new Date();
+    const y = now.getUTCFullYear();
+    const m = now.getUTCMonth(); // 0..11
+    if (kind === '6m') {
+      const fromDate = firstOfMonthUTC(y, m - 5); // incluye mes actual hacia atrás
+      setRange({ from: monthStr(fromDate), to: monthStr(now) });
+    } else if (kind === '1y') {
+      const fromDate = firstOfMonthUTC(y, m - 11);
+      setRange({ from: monthStr(fromDate), to: monthStr(now) });
+    } else if (kind === 'ytd') {
+      const fromDate = firstOfMonthUTC(y, 0);
+      setRange({ from: monthStr(fromDate), to: monthStr(now) });
+    } else if (kind === 'all') {
+      setRange({ from: '', to: '' });
+    }
+  }
 
   const queryKey = useMemo(() => ['kpis', range.from || null, range.to || null], [range]);
 
@@ -65,6 +128,8 @@ export default function Dashboard() {
   const net = Number(totals.net || (sales - purchases));
   const top = data?.topClient || null;
 
+  const money = (n) => showRaw ? fmtNumber(n) : fmtCurrency(n);
+
   return (
     <div style={{ fontFamily:'system-ui, -apple-system, Segoe UI, Roboto, sans-serif', padding:16, maxWidth:1200, margin:'0 auto' }}>
       <header style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
@@ -75,7 +140,12 @@ export default function Dashboard() {
         </div>
       </header>
 
-      <section style={{marginBottom:12}}>
+      <section style={{display:'grid', gap:10, marginBottom:12}}>
+        <PresetsBar
+          onPreset={applyPreset}
+          showRaw={showRaw} setShowRaw={setShowRaw}
+          showDebug={showDebug} setShowDebug={setShowDebug}
+        />
         <RangeControls value={range} onChange={setRange} />
       </section>
 
@@ -88,29 +158,29 @@ export default function Dashboard() {
           <section style={{display:'grid',gridTemplateColumns:'repeat(3,minmax(0,1fr))',gap:12}}>
             <div style={{border:'1px solid #e5e7eb',borderRadius:8,padding:12}}>
               <div style={{fontSize:12,color:'#6b7280'}}>Ventas</div>
-              <div style={{fontSize:22,fontWeight:600}}>{fmtCurrency(sales)}</div>
+              <div style={{fontSize:22,fontWeight:600}}>{money(sales)}</div>
             </div>
             <div style={{border:'1px solid #e5e7eb',borderRadius:8,padding:12}}>
               <div style={{fontSize:12,color:'#6b7280'}}>Compras</div>
-              <div style={{fontSize:22,fontWeight:600}}>{fmtCurrency(purchases)}</div>
+              <div style={{fontSize:22,fontWeight:600}}>{money(purchases)}</div>
             </div>
             <div style={{border:'1px solid #e5e7eb',borderRadius:8,padding:12}}>
               <div style={{fontSize:12,color:'#6b7280'}}>Neto</div>
-              <div style={{fontSize:22,fontWeight:600}}>{fmtCurrency(net)}</div>
+              <div style={{fontSize:22,fontWeight:600}}>{money(net)}</div>
             </div>
           </section>
 
           <section style={{marginTop:16}}>
             <h3 style={{margin:'12px 0 8px'}}>Top cliente</h3>
             {top ? (
-              <div style={{border:'1px solid #e5e7eb',borderRadius:8,padding:12,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+              <div style={{border:'1px solid #e5e7eb',borderRadius:8,padding:12,display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,flexWrap:'wrap'}}>
                 <div>
                   <div style={{fontSize:14,color:'#6b7280'}}>Cliente</div>
                   <div style={{fontWeight:600}}>{top.client}</div>
                 </div>
                 <div>
                   <div style={{fontSize:14,color:'#6b7280'}}>Ingresos</div>
-                  <div style={{fontWeight:600}}>{fmtCurrency(top.revenue)}</div>
+                  <div style={{fontWeight:600}}>{money(top.revenue)}</div>
                 </div>
                 <div>
                   <div style={{fontSize:14,color:'#6b7280'}}>Ventas</div>
@@ -118,13 +188,22 @@ export default function Dashboard() {
                 </div>
                 <div>
                   <div style={{fontSize:14,color:'#6b7280'}}>Ticket prom.</div>
-                  <div style={{fontWeight:600}}>{fmtCurrency(top.avgTicket)}</div>
+                  <div style={{fontWeight:600}}>{money(top.avgTicket)}</div>
                 </div>
               </div>
             ) : (
               <div style={{ color: '#6b7280' }}>(Sin datos de top cliente en el período)</div>
             )}
           </section>
+
+          {showDebug && (
+            <details style={{marginTop:16}}>
+              <summary>Ver JSON (debug)</summary>
+              <pre style={{ marginTop: 8, background: '#f9fafb', padding: 12, borderRadius: 8, overflow: 'auto' }}>
+                {JSON.stringify(data, null, 2)}
+              </pre>
+            </details>
+          )}
         </>
       )}
     </div>
