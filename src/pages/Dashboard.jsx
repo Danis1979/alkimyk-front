@@ -214,8 +214,8 @@ export default function Dashboard() {
       ) : isError ? (
         <div style={{color:'crimson'}}>No se pudieron cargar los KPIs: {String(error?.message||'')}</div>
       ) : (
-        <>
-          <section style={{display:'grid',gridTemplateColumns:'repeat(3,minmax(0,1fr))',gap:12}}>
+        <div>
+<section style={{display:'grid',gridTemplateColumns:'repeat(3,minmax(0,1fr))',gap:12}}>
             <div style={{border:'1px solid #e5e7eb',borderRadius:12,padding:14, background:'#fff'}}>
               <div style={{fontSize:12,color:'#6b7280'}}>Ventas</div>
               <div style={{fontSize:24,fontWeight:700}}>{money(sales)}</div>
@@ -256,8 +256,9 @@ export default function Dashboard() {
               <span key={i} title={fmtCurrency(x.net)}>{x.label}</span>
             ))}
           </div>
-        </>
-      ) : (
+
+        </div>
+) : (
         <div style={{ color: '#6b7280' }}>(Sin datos para graficar)</div>
       )}
     </div>
