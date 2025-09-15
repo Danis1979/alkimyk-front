@@ -105,7 +105,12 @@ export default function Dashboard() {
     queryKey,
     queryFn: async () => {
       const params = {};
-      if (range.from) params.from = range.from;
+      
+    // Fallbacks locales para la mini gráfica
+    const series = Array.isArray(data?.series) ? data.series : [];
+    const isSeriesLoading = false;
+    const months = series.map((_, i) => `M${i+1}`);
+if (range.from) params.from = range.from;
       if (range.to)   params.to   = range.to;
       const { data } = await http.get('/reports/kpis', { params });
       return data;
@@ -263,12 +268,5 @@ const totals    = data?.totals || {};
   );
 }
 
-// --- safety defaults (no-op) ---
-if (typeof series === 'undefined') { var series = []; }
-if (typeof isSeriesLoading === 'undefined') { var isSeriesLoading = false; }
 if (typeof months === 'undefined') {
-  var months = Array.isArray(series) && series.length
-    ? series.map((_, i) => `M${i+1}`)
-    : [];
-}
 // ---
