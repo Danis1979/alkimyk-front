@@ -1,3 +1,4 @@
+import Nav from './components/Nav.jsx';
 import { NavLink, Routes, Route } from 'react-router-dom';
 
 import Dashboard    from './pages/Dashboard.jsx';
@@ -32,7 +33,8 @@ export default function App() {
     <div style={{fontFamily:'system-ui, -apple-system, Segoe UI, Roboto, sans-serif'}}>
       <Header />
       <main style={{padding:16, maxWidth:1100, margin:'0 auto'}}>
-        <Routes>
+        <Nav />
+<Routes>
           <Route path="/"              element={<Dashboard />} />
           <Route path="/dashboard"     element={<Dashboard />} />
           <Route path="/orders"        element={<Orders />} />
