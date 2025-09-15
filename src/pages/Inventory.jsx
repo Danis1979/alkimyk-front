@@ -21,10 +21,13 @@ export default function Inventory() {
   }, [url]);
 
   return (
-    <div style={{padding:16}}>
+    <div>
       <h2 style={{marginTop:0}}>Inventario</h2>
       <p>Descargá el stock completo en CSV:</p>
-      <a href={url} target="_blank" rel="noreferrer" style={{display:'inline-block',padding:'8px 12px',border:'1px solid #e5e7eb',borderRadius:8,textDecoration:'none'}}>⬇ Descargar stock.csv</a>
+      <a href={url} target="_blank" rel="noreferrer"
+         style={{display:'inline-block',padding:'8px 12px',border:'1px solid #e5e7eb',borderRadius:8,textDecoration:'none'}}>
+        ⬇ Descargar stock.csv
+      </a>
 
       <h3 style={{marginTop:16}}>Vista previa (primeras filas)</h3>
       {err ? (
