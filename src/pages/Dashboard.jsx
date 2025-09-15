@@ -262,3 +262,13 @@ const totals    = data?.totals || {};
     </div>
   );
 }
+
+// --- safety defaults (no-op) ---
+if (typeof series === 'undefined') { var series = []; }
+if (typeof isSeriesLoading === 'undefined') { var isSeriesLoading = false; }
+if (typeof months === 'undefined') {
+  var months = Array.isArray(series) && series.length
+    ? series.map((_, i) => `M${i+1}`)
+    : [];
+}
+// ---
