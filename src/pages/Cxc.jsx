@@ -3,24 +3,29 @@ import { http } from '../lib/http';
 import { fmtCurrency } from '../lib/format';
 
 export default function Cxc() {
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
     queryKey: ['kpis-cxc'],
-    queryFn: async () => (await http.get('/reports/kpis')).data,
-    staleTime: 30000,
+    queryFn: async ()=> (await http.get('/reports/kpis')).data,
   });
 
-  if (isLoading) return <div style={{padding:16}}>Cargando…</div>;
-  if (isError)   return <div style={{padding:16, color:'crimson'}}>No se pudo cargar KPIs.</div>;
-
-  const pending = Number(data?.receivablesPending || 0);
   return (
-    <div style={{padding:16}}>
-      <h2 style={{marginTop:0}}>Cuentas por Cobrar</h2>
-      <div style={{fontSize:12,color:'#6b7280'}}>Pendiente al día de hoy</div>
-      <div style={{fontSize:36,fontWeight:700,margin:'6px 0'}}>{fmtCurrency(pending)}</div>
-      <div style={{fontSize:12,color:'#9ca3af'}}>
-        {pending > 0 ? 'Revisá las cobranzas pendientes.' : '¡Todo al día!'}
+    <div style={{ fontFamily:'system-ui, -apple-system, Segoe UI, Roboto, sans-serif', padding:16, maxWidth:900, margin:'0 auto' }}>
+      <h2 style={{marginTop:0}}>CxC</h2>
+      <div style={{display:'flex',gap:8,alignItems:'center'}}>
+        <button onClick={()=>refetch()} disabled={isFetching}>
+          {isFetching ? 'Actualizando…' : 'Actualizar'}
+        </button>
       </div>
+
+      {isLoading && <div style={{marginTop:12}}>Cargando…</div>}
+      {isError   && <div style={{marginTop:12,color:'crimson'}}>Error: {String(error?.message||'')}</div>}
+
+      {!isLoading && !isError && (
+        <div style={{marginTop:12, border:'1px solid #e5e7eb', borderRadius:8, padding:12}}>
+          <div style={{fontSize:12,color:'#6b7280'}}>Pendiente</div>
+          <div style={{fontSize:22,fontWeight:600}}>{fmtCurrency(data?.receivablesPending || 0)}</div>
+        </div>
+      )}
     </div>
   );
 }
