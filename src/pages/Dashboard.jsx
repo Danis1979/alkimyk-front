@@ -75,7 +75,7 @@ export default function Dashboard() {
   const initialTo   = searchParams.get('to')   ?? readSavedRange().to   ?? '';
   const [range, setRange] = useState({ from: initialFrom, to: initialTo });
   const [showDebug, setShowDebug] = useState(false);
-  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+  const [lastUpdated, setLastUpdated] = useState(null);
 
   // Sincronizar a URL + localStorage cuando cambia el rango
   useEffect(() => {
