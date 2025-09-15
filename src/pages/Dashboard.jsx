@@ -1,4 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
+
+// shim: si no hubo alias en useQuery, evitamos ReferenceError
+let isSeriesLoading = false;
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { http } from '../lib/http.js';
