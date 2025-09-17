@@ -1,5 +1,20 @@
 import { Link, useSearchParams } from 'react-router-dom';
 function useSortParamLocal(){
+  const [sp,setSp] = (typeof ReactRouterDOM!=="undefined" && ReactRouterDOM.useSearchParams) ? ReactRouterDOM.useSearchParams() : (window._dummySP || [new URLSearchParams(window.location.search), ()=>{}]);
+  const sort = sp.get("sort") || "";
+  const toggle = (key)=>{
+    const asc = key, desc = `-${key}`;
+    const next = sort==="" ? asc : (sort===asc ? desc : "");
+    const nsp = new URLSearchParams(sp);
+    if (next) nsp.set("sort", next); else nsp.delete("sort");
+    if (setSp) setSp(nsp, { replace:true });
+    const u = new URL(window.location.href); u.search = nsp.toString(); history.replaceState({}, "", u);
+  };
+  return { sort, toggle };
+}
+
+import { Link, useSearchParams } from 'react-router-dom';
+function useSortParamLocal(){
   const [sp,setSp]=ReactRouterDOM.useSearchParams ? ReactRouterDOM.useSearchParams() : (window._dummySP||[new URLSearchParams(window.location.search),()=>{}]);
   const sort = sp.get("sort") || "";
   const toggle = (key)=>{
