@@ -1,4 +1,19 @@
 import { Link, useSearchParams } from 'react-router-dom';
+function useSortParamLocal(){
+  const [sp,setSp]=ReactRouterDOM.useSearchParams ? ReactRouterDOM.useSearchParams() : (window._dummySP||[new URLSearchParams(window.location.search),()=>{}]);
+  const sort = sp.get("sort") || "";
+  const toggle = (key)=>{
+    const asc = key, desc = `-${key}`;
+    const next = sort===""?asc:(sort===asc?desc:"");
+    const nsp = new URLSearchParams(sp);
+    if(next) nsp.set("sort", next); else nsp.delete("sort");
+    if (setSp) setSp(nsp, {replace:true});
+    const u = new URL(window.location.href); u.search = nsp.toString(); history.replaceState({}, "", u);
+  };
+  return { sort, toggle };
+}
+
+import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { fetchOrders } from '../services/orders.service';
 import { fmtCurrency } from '../lib/format';
@@ -32,7 +47,7 @@ export default function Orders() {
     });
   };
 
-  const { sort, toggle } = useSortParam();
+  const { sort, toggle } = useSortParamLocal();
   const icon = (k) => (sort === k ? " \u2191" : (sort === ("-" + k) ? " \u2193" : ""));
   const { data: ordersData } = useQuery({
     queryKey: ["orders.search", { sort }],
