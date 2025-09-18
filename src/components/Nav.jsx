@@ -13,6 +13,13 @@ export default function Nav() {
     <nav style={{display:'flex',gap:8,padding:12,borderBottom:'1px solid #e5e7eb',position:'sticky',top:0,background:'white',zIndex:10}}>
       <NavLink to="/dashboard" style={sty}>Dashboard</NavLink>
       <NavLink to="/orders"    style={sty}>Pedidos</NavLink>
+      <NavLink to="/sales" style={sty}>Ventas</NavLink>
+      <NavLink to="/purchases" style={sty}>Compras</NavLink>
+      <NavLink to="/production" style={sty}>Producción</NavLink>
+      <NavLink to="/inventory" style={sty}>Stock</NavLink>
+      <NavLink to="/cheques" style={sty}>Cheques</NavLink>
+      <NavLink to="/masters" style={sty}>Maestros</NavLink>
+      <NavLink to="/reports" style={sty}>Informes</NavLink>
       <NavLink to="/inventory" style={sty}>Inventario</NavLink>
       <NavLink to="/cxc"       style={sty}>CxC</NavLink>
     </nav>

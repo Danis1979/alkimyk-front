@@ -15,6 +15,13 @@ export default function NavBar() {
       <strong style={{ marginRight: 8 }}>CMR Alkimyk</strong>
       <NavLink to="/dashboard" style={linkStyle}>Dashboard</NavLink>
       <NavLink to="/orders"    style={linkStyle}>Pedidos</NavLink>
+      <NavLink to="/sales" style={linkStyle}>Ventas</NavLink>
+      <NavLink to="/purchases" style={linkStyle}>Compras</NavLink>
+      <NavLink to="/production" style={linkStyle}>Producción</NavLink>
+      <NavLink to="/inventory" style={linkStyle}>Stock</NavLink>
+      <NavLink to="/cheques" style={linkStyle}>Cheques</NavLink>
+      <NavLink to="/masters" style={linkStyle}>Maestros</NavLink>
+      <NavLink to="/reports" style={linkStyle}>Informes</NavLink>
       <NavLink to="/inventory" style={linkStyle}>Inventario</NavLink>
       <NavLink to="/cxc"       style={linkStyle}>CxC</NavLink>
     </nav>
