@@ -12,6 +12,12 @@ export async function fetchOrdersSearch(args) {
 }
 
 export async function fetchOrderById(id) {
-  const { data } = await http.get(`/orders/${id}`);
-  return data;
+  const tryUrls = [`/orders/${id}/full`, `/orders/${id}`];
+  for (const u of tryUrls) {
+    try {
+      const { data } = await http.get(u);
+      if (data) return data;
+    } catch (_) {}
+  }
+  return { id, items: [] };
 }
