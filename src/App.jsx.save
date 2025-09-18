@@ -1,4 +1,4 @@
-import Sales from './pages/Sales';
+	import Sales from './pages/Sales';
 import Purchases from './pages/Purchases';
 import Production from './pages/Production';
 import Cheques from './pages/Cheques';

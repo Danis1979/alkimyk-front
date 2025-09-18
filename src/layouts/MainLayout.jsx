@@ -1,3 +1,5 @@
+import KpiStrip from '../components/KpiStrip';
+
 // src/layouts/MainLayout.jsx
 import { Link, NavLink, Outlet } from "react-router-dom";
 
