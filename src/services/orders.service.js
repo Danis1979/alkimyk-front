@@ -1,9 +1,17 @@
-const API = import.meta.env.VITE_API_BASE_URL || '';
+import { http } from '../lib/http';
 
-export async function fetchOrdersSearch({ page=1, limit=20, sort } = {}) {
+export async function fetchOrders({ page=1, limit=20, sort } = {}) {
   const qs = new URLSearchParams({ page: String(page), limit: String(limit) });
   if (sort) qs.set('sort', sort);
-  const res = await fetch(`${API}/orders/search?${qs.toString()}`);
-  if (!res.ok) throw new Error('Failed to load orders');
-  return res.json();
+  const { data } = await http.get(`/orders/search?${qs.toString()}`);
+  return data;
+}
+
+export async function fetchOrdersSearch(args) {
+  return fetchOrders(args);
+}
+
+export async function fetchOrderById(id) {
+  const { data } = await http.get(`/orders/${id}`);
+  return data;
 }
