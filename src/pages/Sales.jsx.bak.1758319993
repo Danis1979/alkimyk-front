@@ -6,33 +6,26 @@ import { fetchOrders } from '../services/orders.service';
 import { fmtCurrency } from '../lib/format';
 
 function Label({ children }) {
-  return (
-    <span style={{ fontSize: 12, color: '#475569', display: 'block', marginBottom: 4 }}>
-      {children}
-    </span>
-  );
+  return <span style={{ fontSize: 12, color: '#475569', display: 'block', marginBottom: 4 }}>{children}</span>;
 }
 
 export default function Sales() {
   const [sp, setSp] = useSearchParams();
 
   // Defaults + lectura desde URL
-  const page = Math.max(1, parseInt(sp.get('page') || '1', 10));
+  const page  = Math.max(1, parseInt(sp.get('page')  || '1', 10));
   const limit = [10, 20, 50].includes(parseInt(sp.get('limit') || '20', 10))
     ? parseInt(sp.get('limit') || '20', 10)
     : 20;
-  const sort = sp.get('sort') || '-date'; // -date | date | -total | total
-  const q = sp.get('q') || '';
+  const sort  = sp.get('sort') || '-date';        // -date | date | -total | total
+  const q     = sp.get('q') || '';
 
-  const queryKey = useMemo(
-    () => ['orders.search', { page, limit, sort, q }],
-    [page, limit, sort, q]
-  );
+  const queryKey = useMemo(() => ['orders.search', { page, limit, sort, q }], [page, limit, sort, q]);
 
   // Helpers para escribir params y resetear page cuando cambian filtros
   const setParam = (key, value, { resetPage = false } = {}) => {
     const next = new URLSearchParams(sp);
-    if (value === undefined || value === null || value === '') next.delete(key);
+    if (value === undefined || value === null || value === '' ) next.delete(key);
     else next.set(key, value);
     if (resetPage) next.set('page', '1');
     setSp(next, { replace: true });
@@ -125,13 +118,7 @@ export default function Sales() {
               next.set('sort', '-date');
               setSp(next, { replace: true });
             }}
-            style={{
-              border: '1px solid #cbd5e1',
-              borderRadius: 8,
-              padding: '8px 10px',
-              width: '100%',
-              background: '#fff',
-            }}
+            style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '8px 10px', width: '100%', background: '#fff' }}
           >
             Limpiar filtros
           </button>
@@ -144,45 +131,23 @@ export default function Sales() {
 
       {/* Tabla */}
       {!isLoading && (
-        <table
-          style={{
-            width: '100%',
-            borderCollapse: 'collapse',
-            border: '1px solid #e2e8f0',
-            borderRadius: 8,
-            overflow: 'hidden',
-          }}
-        >
+        <table style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid #e2e8f0', borderRadius: 8, overflow: 'hidden' }}>
           <thead style={{ background: '#f8fafc' }}>
             <tr>
-              <th style={{ textAlign: 'left', padding: '10px 8px', fontWeight: 600, fontSize: 12, color: '#334155' }}>
-                ID
-              </th>
-              <th style={{ textAlign: 'left', padding: '10px 8px', fontWeight: 600, fontSize: 12, color: '#334155' }}>
-                Fecha
-              </th>
-              <th style={{ textAlign: 'left', padding: '10px 8px', fontWeight: 600, fontSize: 12, color: '#334155' }}>
-                Cliente
-              </th>
-              <th style={{ textAlign: 'right', padding: '10px 8px', fontWeight: 600, fontSize: 12, color: '#334155' }}>
-                Total
-              </th>
-              <th style={{ textAlign: 'left', padding: '10px 8px', fontWeight: 600, fontSize: 12, color: '#334155' }}>
-                Acciones
-              </th>
+              <th style={{ textAlign: 'left', padding: '10px 8px', fontWeight: 600, fontSize: 12, color: '#334155' }}>ID</th>
+              <th style={{ textAlign: 'left', padding: '10px 8px', fontWeight: 600, fontSize: 12, color: '#334155' }}>Fecha</th>
+              <th style={{ textAlign: 'left', padding: '10px 8px', fontWeight: 600, fontSize: 12, color: '#334155' }}>Cliente</th>
+              <th style={{ textAlign: 'right', padding: '10px 8px', fontWeight: 600, fontSize: 12, color: '#334155' }}>Total</th>
+              <th style={{ textAlign: 'left', padding: '10px 8px', fontWeight: 600, fontSize: 12, color: '#334155' }}>Acciones</th>
             </tr>
           </thead>
           <tbody>
             {items.map((o) => (
               <tr key={o.id} style={{ borderTop: '1px solid #e2e8f0' }}>
                 <td style={{ padding: '10px 8px' }}>#{o.id}</td>
-                <td style={{ padding: '10px 8px' }}>
-                  {o.date ? new Date(o.date).toLocaleDateString('es-AR') : '—'}
-                </td>
-                <td style={{ padding: '10px 8px' }}>{o.client ?? '—'}</td>
-                <td style={{ padding: '10px 8px', textAlign: 'right' }}>
-                  {fmtCurrency(o.total)}
-                </td>
+                <td style={{ padding: '10px 8px' }}>{new Date(o.date).toLocaleDateString('es-AR')}</td>
+                <td style={{ padding: '10px 8px' }}>{o.client}</td>
+                <td style={{ padding: '10px 8px', textAlign: 'right' }}>{fmtCurrency(o.total)}</td>
                 <td style={{ padding: '10px 8px' }}>
                   <Link to={`/orders/${o.id}`} style={{ textDecoration: 'none' }}>
                     Ver detalle →
@@ -196,20 +161,13 @@ export default function Sales() {
                   Sin resultados.
                 </td>
               </tr>
-            )}
+            ))}
           </tbody>
         </table>
       )}
 
       {/* Paginación */}
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginTop: 12,
-        }}
-      >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
         <div style={{ fontSize: 12, color: '#475569' }}>
           Página {page} · {items.length} de {limit}
         </div>
