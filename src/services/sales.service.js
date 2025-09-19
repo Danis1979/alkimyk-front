@@ -1,69 +1,53 @@
 // src/services/sales.service.js
 import { http } from '../lib/http';
 
-/** Intenta GET sobre varios paths hasta que alguno responda 200 */
-async function tryGet(paths) {
-  let lastErr;
-  for (const p of paths) {
-    try {
-      const { data } = await http.get(p);
-      return data;
-    } catch (e) {
-      lastErr = e;
-      if (e?.response?.status === 404) continue;
-    }
+// Normaliza campos que pueden venir como "fecha" o "date", "client" o "cliente"
+function normSale(s) {
+  return {
+    id: s.id,
+    fecha: s.fecha ?? s.date ?? null,
+    client: s.client ?? s.cliente ?? s.clientName ?? s.customer ?? '',
+    total: s.total ?? s.subtotal ?? 0,
+    raw: s,
+  };
+}
+
+export async function searchSales({ page = 1, limit = 20, sort = '-fecha', from, to, q } = {}) {
+  const qs = new URLSearchParams({ page: String(page), limit: String(limit) });
+  if (sort) qs.set('sort', sort);
+  if (from) qs.set('from', from);
+  if (to)   qs.set('to', to);
+  if (q)    qs.set('q', q);
+
+  // Backend final
+  try {
+    const { data } = await http.get(`/sales/search?${qs.toString()}`);
+    const items = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
+    return {
+      items: items.map(normSale),
+      page: data?.page ?? page,
+      pages: data?.pages ?? (data?.total ? Math.max(1, Math.ceil(data.total / limit)) : undefined),
+      total: data?.total,
+    };
+  } catch (e) {
+    // Fallback (por si el backend expone sólo array)
+    return { items: [], page, pages: 1, total: 0 };
   }
-  if (lastErr) console.warn('tryGet: all paths failed', paths, lastErr?.message || lastErr);
-  return { items: [] };
 }
 
-export async function listClients(limit = 100) {
-  // Ajustá si tu API usa otro esquema; estos son fallbacks comunes
-  const data = await tryGet([
-    `/clients?limit=${limit}`,
-    `/clients/search?limit=${limit}`,
-    `/clients/list?limit=${limit}`
-  ]);
-  // Normalizamos a array simple
-  return Array.isArray(data) ? data : (data.items || []);
-}
-
-export async function listProducts(limit = 100) {
-  const data = await tryGet([
-    `/products?limit=${limit}`,
-    `/products/search?limit=${limit}`,
-    `/products/list?limit=${limit}`
-  ]);
-  return Array.isArray(data) ? data : (data.items || []);
-}
-
-/**
- * Crea una venta y espera que el backend ejecute la transacción completa:
- * - inserta en sales
- * - OUT en inventory_moves por item
- * - ledger según pm (Caja/Banco/Cheques/CC)
- * - receivables/cheques si corresponde
- *
- * Intentamos varios endpoints por compatibilidad.
- */
-export async function createSaleTx(payload) {
-  const candidates = [
-    '/tx/sales',    // recomendado
-    '/sales/tx',    // alternativa
-    '/sales'        // muchas APIs aceptan ventas aquí y resuelven internamente
-  ];
-
-  let lastErr;
-  for (const path of candidates) {
+export async function fetchSaleById(id) {
+  // Prioriza detalle “full” si existe
+  const urls = [`/sales/${id}/full`, `/sales/${id}`];
+  for (const u of urls) {
     try {
-      const { data } = await http.post(path, payload);
+      const { data } = await http.get(u);
       return data;
-    } catch (e) {
-      lastErr = e;
-      // si 404 probamos el siguiente; otros errores se propagan
-      if (e?.response?.status === 404) continue;
-      throw e;
-    }
+    } catch (_) {}
   }
-  throw lastErr || new Error('No tx endpoint for sales');
+  return { id, items: [] };
+}
+
+export async function createSale(payload) {
+  const { data } = await http.post('/sales', payload);
+  return data;
 }

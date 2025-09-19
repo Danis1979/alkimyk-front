@@ -161,7 +161,7 @@ export default function Sales() {
                   Sin resultados.
                 </td>
               </tr>
-            )}
+            ))}
           </tbody>
         </table>
       )}
