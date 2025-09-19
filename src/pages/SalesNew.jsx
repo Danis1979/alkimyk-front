@@ -1,8 +1,10 @@
+// src/pages/SalesNew.jsx
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { fmtCurrency } from '../lib/format';
 import { http } from '../lib/http';
 import ClientTypeahead from '../components/ClientTypeahead';
+import ProductTypeahead from '../components/ProductTypeahead';
 
 const PM_OPTS = [
   { value: 'Contado',        label: 'Contado' },
@@ -23,30 +25,35 @@ export default function SalesNew() {
   const navigate = useNavigate();
   const [date, setDate] = useState(todayYMD());
   const [pm, setPm] = useState('Contado');
+
+  // Cliente
   const [clientId, setClientId] = useState(null);
   const [clientLabel, setClientLabel] = useState('');
-  const [items, setItems] = useState([{ key: 1, product: '', qty: 1, price: 0 }]);
+
+  // Ítems: usamos productId + productLabel
+  const [items, setItems] = useState([
+    { key: 1, productId: null, productLabel: '', qty: 1, price: 0 },
+  ]);
 
   const totals = useMemo(() => {
     const subtotal = items.reduce((acc, it) => acc + number(it.qty) * number(it.price), 0);
     const iva = 0;
-    const total = subtotal + iva;
-    return { subtotal, iva, total };
+    return { subtotal, iva, total: subtotal + iva };
   }, [items]);
 
   const canSave = useMemo(() => {
     const hasClient = !!clientId || clientLabel.trim().length > 0;
     if (!hasClient || !date) return false;
-    const valid = items.filter(it => it.product.trim() && number(it.qty) > 0);
+    const valid = items.filter(it => (it.productLabel.trim() || it.productId) && number(it.qty) > 0);
     return valid.length > 0;
   }, [clientId, clientLabel, date, items]);
 
   const addItem = () => {
     const maxKey = items.reduce((m, it) => Math.max(m, it.key), 0);
-    setItems([...items, { key: maxKey + 1, product: '', qty: 1, price: 0 }]);
+    setItems([...items, { key: maxKey + 1, productId: null, productLabel: '', qty: 1, price: 0 }]);
   };
   const removeItem = (key) => setItems(items.filter(it => it.key !== key));
-  const updateItem = (key, field, value) => setItems(items.map(it => (it.key === key ? { ...it, [field]: value } : it)));
+  const updateItem = (key, patch) => setItems(items.map(it => (it.key === key ? { ...it, ...patch } : it)));
 
   const onSubmit = async () => {
     const payload = {
@@ -55,12 +62,14 @@ export default function SalesNew() {
       fecha: new Date(date).toISOString(),
       pm,
       estado: 'Confirmada',
-      items: items.filter(it => it.product.trim() && number(it.qty) > 0).map(it => ({
-        productId: null,
-        product: it.product.trim(),
-        qty: number(it.qty),
-        price: number(it.price),
-      })),
+      items: items
+        .filter(it => (it.productId || it.productLabel.trim()) && number(it.qty) > 0)
+        .map(it => ({
+          productId: it.productId,
+          product: it.productLabel.trim() || null,
+          qty: number(it.qty),
+          price: number(it.price),
+        })),
       subtotal: totals.subtotal,
       iva: totals.iva,
       total: totals.total,
@@ -83,6 +92,7 @@ export default function SalesNew() {
         <Link to="/sales" style={{ textDecoration: 'none', border: '1px solid #cbd5e1', borderRadius: 8, padding: '8px 10px', fontSize: 14 }}>← Volver</Link>
       </div>
 
+      {/* Cabecera */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 220px 220px', gap: 12, alignItems: 'end', marginBottom: 14 }}>
         <div>
           <label style={{ fontSize: 12, color: '#475569', display: 'block', marginBottom: 4 }}>Cliente</label>
@@ -108,6 +118,7 @@ export default function SalesNew() {
         </div>
       </div>
 
+      {/* Ítems */}
       <div style={{ marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div style={{ fontSize: 14, fontWeight: 600, color: '#334155' }}>Ítems</div>
         <button onClick={addItem} style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '6px 10px', background: '#fff' }}>+ Agregar ítem</button>
@@ -129,13 +140,33 @@ export default function SalesNew() {
             return (
               <tr key={it.key} style={{ borderTop: '1px solid #e2e8f0' }}>
                 <td style={{ padding: '8px 8px' }}>
-                  <input type="text" placeholder="Producto" value={it.product} onChange={(e) => updateItem(it.key, 'product', e.target.value)} style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '6px 8px', width: '100%' }} />
+                  <ProductTypeahead
+                    value={it.productLabel}
+                    selectedId={it.productId}
+                    onChange={(txt) => updateItem(it.key, { productLabel: txt })}
+                    onSelect={(id, label, price) => {
+                      const patch = { productId: id, productLabel: label ?? '' };
+                      // Si no hay precio cargado, autocompleta
+                      if (!number(it.price) && number(price) > 0) patch.price = Number(price);
+                      updateItem(it.key, patch);
+                    }}
+                  />
                 </td>
                 <td style={{ padding: '8px 8px', textAlign: 'right' }}>
-                  <input type="number" inputMode="decimal" step="any" min="0" value={it.qty} onChange={(e) => updateItem(it.key, 'qty', e.target.value)} style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '6px 8px', width: 110, textAlign: 'right' }} />
+                  <input
+                    type="number" inputMode="decimal" step="any" min="0"
+                    value={it.qty}
+                    onChange={(e) => updateItem(it.key, { qty: e.target.value })}
+                    style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '6px 8px', width: 110, textAlign: 'right' }}
+                  />
                 </td>
                 <td style={{ padding: '8px 8px', textAlign: 'right' }}>
-                  <input type="number" inputMode="decimal" step="any" min="0" value={it.price} onChange={(e) => updateItem(it.key, 'price', e.target.value)} style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '6px 8px', width: 130, textAlign: 'right' }} />
+                  <input
+                    type="number" inputMode="decimal" step="any" min="0"
+                    value={it.price}
+                    onChange={(e) => updateItem(it.key, { price: e.target.value })}
+                    style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '6px 8px', width: 130, textAlign: 'right' }}
+                  />
                 </td>
                 <td style={{ padding: '8px 8px', textAlign: 'right', whiteSpace: 'nowrap' }}>{fmtCurrency(line)}</td>
                 <td style={{ padding: '8px 8px' }}>
@@ -150,6 +181,7 @@ export default function SalesNew() {
         </tbody>
       </table>
 
+      {/* Totales */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16, marginTop: 16 }}>
         <div />
         <div style={{ border: '1px solid #e2e8f0', borderRadius: 12, padding: 12 }}>
@@ -166,7 +198,7 @@ export default function SalesNew() {
           <button onClick={onSubmit} disabled={!canSave} style={{ marginTop: 12, width: '100%', padding: '10px 12px', border: '1px solid #cbd5e1', borderRadius: 10, background: canSave ? '#ffffff' : '#f1f5f9', cursor: canSave ? 'pointer' : 'not-allowed', fontWeight: 600 }}>
             Guardar
           </button>
-          {!canSave && <div style={{ marginTop: 8, color: '#64748b', fontSize: 12 }}>Completá cliente (seleccionado o texto) y al menos un ítem con cantidad &gt; 0.</div>}
+          {!canSave && <div style={{ marginTop: 8, color: '#64748b', fontSize: 12 }}>Completá cliente y al menos un ítem con cantidad &gt; 0.</div>}
         </div>
       </div>
     </div>
