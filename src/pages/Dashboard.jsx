@@ -3,7 +3,37 @@ import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { http } from '../lib/http.js';
 import { fmtCurrency } from '../lib/format.js';
+import { useQuery } from '@tanstack/react-query';
 
+const API = import.meta.env.VITE_API_BASE_URL || '';
+const fmtARS = (v)=> new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS',maximumFractionDigits:0}).format(v??0);
+
+function Kpi({label, value}) {
+  return (
+    <div style={{flex:1,minWidth:160,padding:12,border:'1px solid #e2e8f0',borderRadius:10}}>
+      <div style={{fontSize:12,color:'#64748b',marginBottom:6}}>{label}</div>
+      <div style={{fontSize:20,fontWeight:700}}>{fmtARS(value)}</div>
+    </div>
+  );
+}
+
+function CobranzasStrip(){
+  const { data, isLoading } = useQuery({
+    queryKey: ['reports.receivables.summary'],
+    queryFn: async () => (await fetch(`${API}/reports/receivables.summary`)).json()
+  });
+  if (isLoading) return <div style={{color:'#64748b'}}>Cargando cobranzas…</div>;
+  const paid = data?.paid??0, pending = data?.pending??0, overdue = data?.overdue??0;
+  return (
+    <div style={{display:'flex',gap:12,margin:'8px 0 16px'}}>
+      <Kpi label="Cobrado" value={paid} />
+      <Kpi label="Pendiente" value={pending} />
+      <Kpi label="Vencido" value={overdue} />
+    </div>
+  );
+}
+
+// Dentro del componente principal del Dashboard, renderizá <CobranzasStrip />
 // ---------- helpers de fechas ----------
 const ym = (d) => d.toISOString().slice(0,7);
 const monthStartUTC = (d) => new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
@@ -208,6 +238,7 @@ export default function Dashboard() {
   return (
     <div className="container" style={{ maxWidth:1100, margin:'0 auto', padding:16, fontFamily:'system-ui,-apple-system,Segoe UI,Roboto,sans-serif' }}>
       <h1 style={{fontSize:20, fontWeight:700, marginBottom:12}}>Dashboard</h1>
+      <ReceivablesKpis />
 
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
         <PeriodBar
