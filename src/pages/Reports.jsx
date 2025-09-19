@@ -22,27 +22,61 @@ function MiniBars({ series=[] }){
   );
 }
 
+function Stat({ label, value }) {
+  return (
+    <div style={{
+      flex: 1, minWidth: 160, padding: 12, border: '1px solid #e2e8f0',
+      borderRadius: 10, background: '#fff'
+    }}>
+      <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>{label}</div>
+      <div style={{ fontSize: 20, fontWeight: 700 }}>{formatARS(value)}</div>
+    </div>
+  );
+}
+
 export default function Reports(){
   const [from,setFrom] = useState('');
   const [to,setTo]     = useState('');
 
-  const url = useMemo(()=>{
+  // URLs con rango opcional (vacío = default backend)
+  const urlMonthly = useMemo(()=>{
     const qs = new URLSearchParams();
     if (from) qs.set('from', from);
     if (to)   qs.set('to', to);
     return `${API}/reports/sales.monthly${qs.toString()?`?${qs}`:''}`;
   }, [from,to]);
 
-  const { data, isLoading, isError } = useQuery({
+  const urlReceivables = useMemo(()=>{
+    const qs = new URLSearchParams();
+    if (from) qs.set('from', from);
+    if (to)   qs.set('to', to);
+    return `${API}/reports/receivables.summary${qs.toString()?`?${qs}`:''}`;
+  }, [from,to]);
+
+  // Ventas mensuales
+  const { data: monthly, isLoading: isLoadingMonthly, isError: isErrorMonthly } = useQuery({
     queryKey: ['reports.sales.monthly', { from, to }],
     queryFn: async () => {
-      const res = await fetch(url);
-      if(!res.ok) throw new Error('Failed');
+      const res = await fetch(urlMonthly);
+      if(!res.ok) throw new Error('Failed monthly');
       return res.json();
     }
   });
 
-  const series = data?.series ?? [];
+  // KPIs de cobranzas
+  const { data: recv, isLoading: isLoadingRecv, isError: isErrorRecv } = useQuery({
+    queryKey: ['reports.receivables.summary', { from, to }],
+    queryFn: async () => {
+      const res = await fetch(urlReceivables);
+      if(!res.ok) throw new Error('Failed receivables');
+      return res.json();
+    }
+  });
+
+  const series = monthly?.series ?? [];
+  const paid    = recv?.paid ?? 0;
+  const pending = recv?.pending ?? 0;
+  const overdue = recv?.overdue ?? 0;
 
   return (
     <div style={{maxWidth:960, margin:'0 auto', padding:16}}>
@@ -60,11 +94,23 @@ export default function Reports(){
         <div style={{fontSize:12, color:'#64748b'}}>Tip: vacíos = últimos 6 meses</div>
       </div>
 
-      {isError && <div style={{color:'#b91c1c', marginBottom:8}}>No se pudieron cargar los datos.</div>}
-      {isLoading && <div style={{color:'#475569', marginBottom:8}}>Cargando…</div>}
+      {/* KPIs de Cobranzas */}
+      <div style={{margin:'16px 0 8px', color:'#1f2937', fontWeight:600}}>Cobranzas</div>
+      {isErrorRecv && <div style={{color:'#b91c1c', marginBottom:8}}>No se pudieron cargar las cobranzas.</div>}
+      {isLoadingRecv && <div style={{color:'#475569', marginBottom:8}}>Cargando cobranzas…</div>}
+      {!isLoadingRecv && !isErrorRecv && (
+        <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
+          <Stat label="Cobrado"   value={paid} />
+          <Stat label="Pendiente" value={pending} />
+          <Stat label="Vencido"   value={overdue} />
+        </div>
+      )}
 
+      {/* Ventas mensuales */}
+      <div style={{margin:'8px 0', color:'#1f2937', fontWeight:600}}>Ventas mensuales</div>
+      {isErrorMonthly && <div style={{color:'#b91c1c', marginBottom:8}}>No se pudieron cargar los datos.</div>}
+      {isLoadingMonthly && <div style={{color:'#475569', marginBottom:8}}>Cargando…</div>}
       <MiniBars series={series} />
-
       <div style={{marginTop:8, fontSize:12, color:'#334155'}}>
         {series.length>0 ? `Mostrando ${series.length} mes(es)` : 'Sin datos para el rango seleccionado'}
       </div>
