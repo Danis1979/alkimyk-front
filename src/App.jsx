@@ -14,7 +14,7 @@ import Production from './pages/Production.jsx';
 import Cheques from './pages/Cheques.jsx';
 import Masters from './pages/Masters.jsx';
 import Reports from './pages/Reports.jsx';
-
+import SalesNew from './pages/SalesNew.jsx';
 export default function App() {
   return (
     <div style={{fontFamily:'system-ui, -apple-system, Segoe UI, Roboto, sans-serif'}}>
@@ -38,7 +38,7 @@ export default function App() {
           <Route path="/cheques" element={<Cheques />} />
           <Route path="/masters" element={<Masters />} />
           <Route path="/reports" element={<Reports />} />
-
+          <Route path="/sales/new" element={<SalesNew />} />
           {/* Redirects */}
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
