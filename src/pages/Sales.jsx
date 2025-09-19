@@ -1,248 +1,205 @@
 // src/pages/Sales.jsx
 import { useMemo } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { useSearchParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { fmtCurrency } from '../lib/format.js';
-import { fetchOrdersSearch } from '../services/orders.service.js';
+import { fetchOrders } from '../services/orders.service';
+import { fmtCurrency } from '../lib/format';
 
-const PAGE_SIZES = [10, 20, 50];
-
-function useIntParam(sp, name, fallback) {
-  const v = parseInt(sp.get(name) || '', 10);
-  return Number.isFinite(v) && v > 0 ? v : fallback;
-}
-
-function formatDateISO(d) {
-  if (!d) return '';
-  try {
-    const date = typeof d === 'string' ? new Date(d) : d;
-    return date.toLocaleDateString('es-AR');
-  } catch {
-    return d;
-  }
-}
-
-function Caret({ active, dir }) {
-  if (!active) return <span style={{opacity:.25, marginLeft:4}}>↕</span>;
-  return <span style={{marginLeft:4}}>{dir === 'desc' ? '↓' : '↑'}</span>;
-}
-
-function Toolbar({ page, limit, sort, q, setParam }) {
-  return (
-    <div style={{
-      display:'grid',
-      gridTemplateColumns:'1fr auto auto auto',
-      gap:12, alignItems:'center',
-      margin:'12px 0'
-    }}>
-      {/* búsqueda */}
-      <input
-        type="search"
-        placeholder="Buscar cliente…"
-        value={q}
-        onChange={e => setParam('q', e.target.value)}
-        onKeyDown={ev => { if (ev.key === 'Enter') setParam('page', '1'); }}
-        style={{border:'1px solid #cbd5e1', borderRadius:6, padding:'8px 10px'}}
-      />
-
-      {/* tamaño */}
-      <div style={{display:'flex', gap:8, alignItems:'center', justifyContent:'flex-end'}}>
-        <label style={{fontSize:12, color:'#475569'}}>Tamaño</label>
-        <select
-          value={limit}
-          onChange={e => setParam('limit', String(parseInt(e.target.value, 10) || 20))}
-          style={{border:'1px solid #cbd5e1', borderRadius:6, padding:'6px 8px'}}
-        >
-          {PAGE_SIZES.map(s => <option key={s} value={s}>{s}</option>)}
-        </select>
-      </div>
-
-      {/* orden */}
-      <div style={{display:'flex', gap:8, alignItems:'center', justifyContent:'flex-end'}}>
-        <label style={{fontSize:12, color:'#475569'}}>Orden</label>
-        <select
-          value={sort}
-          onChange={e => setParam('sort', e.target.value)}
-          style={{border:'1px solid #cbd5e1', borderRadius:6, padding:'6px 8px'}}
-        >
-          <option value="-date">Fecha ↓ (recientes)</option>
-          <option value="date">Fecha ↑ (antiguos)</option>
-          <option value="-total">Total ↓</option>
-          <option value="total">Total ↑</option>
-        </select>
-      </div>
-
-      {/* alta */}
-      <div style={{textAlign:'right'}}>
-        <Link
-          to="/sales/new"
-          style={{textDecoration:'none', padding:'8px 12px', border:'1px solid #cbd5e1', borderRadius:6}}
-        >
-          + Nueva venta
-        </Link>
-      </div>
-    </div>
-  );
-}
-
-function Pagination({ page, limit, count, setParam }) {
-  const canPrev = page > 1;
-  const canNext = count >= limit; // heurística: si llegaron "limit", podría haber otra página
-
-  return (
-    <div style={{
-      display:'flex', alignItems:'center', justifyContent:'space-between',
-      marginTop:12, paddingTop:8, borderTop:'1px solid #e2e8f0'
-    }}>
-      <div style={{fontSize:12, color:'#64748b'}}>
-        Página {page} • Tamaño {limit}
-      </div>
-      <div style={{display:'flex', gap:8}}>
-        <button
-          onClick={() => setParam('page', String(page - 1))}
-          disabled={!canPrev}
-          style={{
-            padding:'6px 10px',
-            border:'1px solid #cbd5e1',
-            borderRadius:6,
-            background: canPrev ? 'white' : '#f1f5f9',
-            color: canPrev ? '#0f172a' : '#94a3b8',
-            cursor: canPrev ? 'pointer' : 'not-allowed'
-          }}
-        >
-          ← Anterior
-        </button>
-        <button
-          onClick={() => setParam('page', String(page + 1))}
-          disabled={!canNext}
-          style={{
-            padding:'6px 10px',
-            border:'1px solid #cbd5e1',
-            borderRadius:6,
-            background: canNext ? 'white' : '#f1f5f9',
-            color: canNext ? '#0f172a' : '#94a3b8',
-            cursor: canNext ? 'pointer' : 'not-allowed'
-          }}
-        >
-          Siguiente →
-        </button>
-      </div>
-    </div>
-  );
+function Label({ children }) {
+  return <span style={{ fontSize: 12, color: '#475569', display: 'block', marginBottom: 4 }}>{children}</span>;
 }
 
 export default function Sales() {
   const [sp, setSp] = useSearchParams();
 
-  const page  = useIntParam(sp, 'page', 1);
-  const limit = useIntParam(sp, 'limit', 10);
-  const sort  = sp.get('sort') || '-date';
+  // Defaults + lectura desde URL
+  const page  = Math.max(1, parseInt(sp.get('page')  || '1', 10));
+  const limit = [10, 20, 50].includes(parseInt(sp.get('limit') || '20', 10))
+    ? parseInt(sp.get('limit') || '20', 10)
+    : 20;
+  const sort  = sp.get('sort') || '-date';        // -date | date | -total | total
   const q     = sp.get('q') || '';
 
-  const setParam = (k, v) => {
-    const n = new URLSearchParams(sp);
-    if (v == null || v === '') n.delete(k);
-    else n.set(k, v);
-    // al cambiar q/limit/sort, volvemos a la primera página
-    if ((k === 'q' || k === 'limit' || k === 'sort') && page !== 1) n.set('page', '1');
-    setSp(n, { replace: true });
+  const queryKey = useMemo(() => ['orders.search', { page, limit, sort, q }], [page, limit, sort, q]);
+
+  // Helpers para escribir params y resetear page cuando cambian filtros
+  const setParam = (key, value, { resetPage = false } = {}) => {
+    const next = new URLSearchParams(sp);
+    if (value === undefined || value === null || value === '' ) next.delete(key);
+    else next.set(key, value);
+    if (resetPage) next.set('page', '1');
+    setSp(next, { replace: true });
   };
 
-  const toggleSort = (col) => {
-    const isThis = sort.replace('-', '') === col;
-    const next = isThis
-      ? (sort.startsWith('-') ? col : `-${col}`)
-      : `-${col}`; // default al cambiar de columna: desc
-    setParam('sort', next);
-  };
-
-  const { data, isLoading, isError, error } = useQuery({
-    queryKey: ['sales.list', { page, limit, sort, q }],
-    queryFn: () => fetchOrdersSearch({ page, limit, sort, q }),
-    keepPreviousData: true
+  const { data, isLoading, isError } = useQuery({
+    queryKey,
+    queryFn: () => fetchOrders({ page, limit, sort, q }),
+    keepPreviousData: true,
   });
 
-  const items = useMemo(() => data?.items ?? [], [data]);
-  const showing = items.length;
-
-  const activeCol = sort.replace('-', '');
-  const dir = sort.startsWith('-') ? 'desc' : 'asc';
+  const items = data?.items ?? [];
+  // Si el backend no trae total/hasNext, usamos heurística: si vinieron "limit" filas, puede haber próxima página.
+  const hasNext = items.length === limit;
 
   return (
-    <div style={{maxWidth: 960, margin: '0 auto'}}>
-      <h1 style={{fontSize: 20, fontWeight: 600, margin:'8px 0 12px'}}>Ventas</h1>
+    <div style={{ maxWidth: 980, margin: '0 auto' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
+        <h1 style={{ fontSize: 20, fontWeight: 600, margin: 0, flex: 1 }}>Ventas</h1>
+        <Link
+          to="/sales/new"
+          style={{
+            textDecoration: 'none',
+            border: '1px solid #cbd5e1',
+            borderRadius: 8,
+            padding: '8px 10px',
+            fontSize: 14,
+          }}
+        >
+          + Nueva venta
+        </Link>
+      </div>
 
-      <Toolbar page={page} limit={limit} sort={sort} q={q} setParam={setParam} />
-
-      {isError && (
-        <div style={{color:'#b91c1c', marginBottom:8}}>
-          Error al cargar ventas: {String(error?.message || 'desconocido')}
+      {/* Controles */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr 160px 160px 140px',
+          gap: 12,
+          alignItems: 'end',
+          marginBottom: 12,
+        }}
+      >
+        <div>
+          <Label>Buscar (cliente / id)</Label>
+          <input
+            type="text"
+            value={q}
+            onChange={(e) => setParam('q', e.target.value, { resetPage: true })}
+            placeholder="Ej: Green & Co"
+            style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '8px 10px', width: '100%' }}
+          />
         </div>
-      )}
-      {isLoading && (
-        <div style={{color:'#475569', marginBottom:8}}>Cargando…</div>
-      )}
 
+        <div>
+          <Label>Orden</Label>
+          <select
+            value={sort}
+            onChange={(e) => setParam('sort', e.target.value, { resetPage: true })}
+            style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '8px 10px', width: '100%' }}
+          >
+            <option value="-date">Fecha desc.</option>
+            <option value="date">Fecha asc.</option>
+            <option value="-total">Total desc.</option>
+            <option value="total">Total asc.</option>
+          </select>
+        </div>
+
+        <div>
+          <Label>Tamaño página</Label>
+          <select
+            value={String(limit)}
+            onChange={(e) => setParam('limit', e.target.value, { resetPage: true })}
+            style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '8px 10px', width: '100%' }}
+          >
+            <option value="10">10 filas</option>
+            <option value="20">20 filas</option>
+            <option value="50">50 filas</option>
+          </select>
+        </div>
+
+        <div>
+          <Label>Acciones</Label>
+          <button
+            onClick={() => {
+              const next = new URLSearchParams();
+              // Reset a defaults
+              next.set('page', '1');
+              next.set('limit', String(limit));
+              next.set('sort', '-date');
+              setSp(next, { replace: true });
+            }}
+            style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '8px 10px', width: '100%', background: '#fff' }}
+          >
+            Limpiar filtros
+          </button>
+        </div>
+      </div>
+
+      {/* Estado */}
+      {isError && <div style={{ color: '#b91c1c', marginBottom: 8 }}>Error cargando ventas.</div>}
+      {isLoading && <div style={{ color: '#475569', marginBottom: 8 }}>Cargando…</div>}
+
+      {/* Tabla */}
       {!isLoading && (
-        <table style={{width:'100%', borderCollapse:'collapse', border:'1px solid #e2e8f0', borderRadius:8, overflow:'hidden'}}>
-          <thead>
-            <tr style={{background:'#f8fafc', textAlign:'left'}}>
-              <th style={{padding:'10px 8px', fontSize:12, color:'#475569'}}>ID</th>
-
-              <th
-                style={{padding:'10px 8px', fontSize:12, color:'#475569', cursor:'pointer'}}
-                onClick={() => toggleSort('date')}
-                title="Ordenar por fecha"
-              >
-                Fecha <Caret active={activeCol==='date'} dir={dir}/>
-              </th>
-
-              <th style={{padding:'10px 8px', fontSize:12, color:'#475569'}}>Cliente</th>
-
-              <th
-                style={{padding:'10px 8px', fontSize:12, color:'#475569', textAlign:'right', cursor:'pointer'}}
-                onClick={() => toggleSort('total')}
-                title="Ordenar por total"
-              >
-                Total <Caret active={activeCol==='total'} dir={dir}/>
-              </th>
-
-              <th style={{padding:'10px 8px', fontSize:12, color:'#475569'}}></th>
+        <table style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid #e2e8f0', borderRadius: 8, overflow: 'hidden' }}>
+          <thead style={{ background: '#f8fafc' }}>
+            <tr>
+              <th style={{ textAlign: 'left', padding: '10px 8px', fontWeight: 600, fontSize: 12, color: '#334155' }}>ID</th>
+              <th style={{ textAlign: 'left', padding: '10px 8px', fontWeight: 600, fontSize: 12, color: '#334155' }}>Fecha</th>
+              <th style={{ textAlign: 'left', padding: '10px 8px', fontWeight: 600, fontSize: 12, color: '#334155' }}>Cliente</th>
+              <th style={{ textAlign: 'right', padding: '10px 8px', fontWeight: 600, fontSize: 12, color: '#334155' }}>Total</th>
+              <th style={{ textAlign: 'left', padding: '10px 8px', fontWeight: 600, fontSize: 12, color: '#334155' }}>Acciones</th>
             </tr>
           </thead>
           <tbody>
-            {items.map(o => (
-              <tr key={o.id} style={{borderTop:'1px solid #e2e8f0'}}>
-                <td style={{padding:'8px 6px'}}>#{o.id}</td>
-                <td style={{padding:'8px 6px'}}>{formatDateISO(o.date)}</td>
-                <td style={{padding:'8px 6px'}}>{o.client}</td>
-                <td style={{padding:'8px 6px', textAlign:'right'}}>{fmtCurrency(o.total)}</td>
-                <td style={{padding:'8px 6px'}}>
-                  <Link to={`/orders/${o.id}`} style={{textDecoration:'none'}}>Ver detalle →</Link>
+            {items.map((o) => (
+              <tr key={o.id} style={{ borderTop: '1px solid #e2e8f0' }}>
+                <td style={{ padding: '10px 8px' }}>#{o.id}</td>
+                <td style={{ padding: '10px 8px' }}>{new Date(o.date).toLocaleDateString('es-AR')}</td>
+                <td style={{ padding: '10px 8px' }}>{o.client}</td>
+                <td style={{ padding: '10px 8px', textAlign: 'right' }}>{fmtCurrency(o.total)}</td>
+                <td style={{ padding: '10px 8px' }}>
+                  <Link to={`/orders/${o.id}`} style={{ textDecoration: 'none' }}>
+                    Ver detalle →
+                  </Link>
                 </td>
               </tr>
             ))}
             {items.length === 0 && (
               <tr>
-                <td colSpan={5} style={{padding:16, color:'#64748b'}}>Sin resultados.</td>
+                <td colSpan={5} style={{ padding: 16, color: '#64748b' }}>
+                  Sin resultados.
+                </td>
               </tr>
             )}
           </tbody>
         </table>
       )}
 
-      <div style={{marginTop:8, fontSize:12, color:'#334155'}}>
-        {showing > 0
-          ? `Mostrando ${showing} registro(s)`
-          : (q ? 'Sin resultados para la búsqueda' : 'Sin datos')}
+      {/* Paginación */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
+        <div style={{ fontSize: 12, color: '#475569' }}>
+          Página {page} · {items.length} de {limit}
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            onClick={() => setParam('page', String(page - 1))}
+            disabled={page <= 1}
+            style={{
+              border: '1px solid #cbd5e1',
+              borderRadius: 8,
+              padding: '8px 10px',
+              background: page <= 1 ? '#f1f5f9' : '#fff',
+              cursor: page <= 1 ? 'not-allowed' : 'pointer',
+            }}
+          >
+            ← Anterior
+          </button>
+          <button
+            onClick={() => setParam('page', String(page + 1))}
+            disabled={!hasNext}
+            style={{
+              border: '1px solid #cbd5e1',
+              borderRadius: 8,
+              padding: '8px 10px',
+              background: !hasNext ? '#f1f5f9' : '#fff',
+              cursor: !hasNext ? 'not-allowed' : 'pointer',
+            }}
+          >
+            Siguiente →
+          </button>
+        </div>
       </div>
-
-      <Pagination
-        page={page}
-        limit={limit}
-        count={items.length}
-        setParam={setParam}
-      />
     </div>
   );
 }
