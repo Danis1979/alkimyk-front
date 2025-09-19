@@ -22,13 +22,31 @@ function formatDateISO(d) {
   }
 }
 
-function Toolbar({ page, limit, sort, setParam }) {
+function Caret({ active, dir }) {
+  if (!active) return <span style={{opacity:.25, marginLeft:4}}>↕</span>;
+  return <span style={{marginLeft:4}}>{dir === 'desc' ? '↓' : '↑'}</span>;
+}
+
+function Toolbar({ page, limit, sort, q, setParam }) {
   return (
     <div style={{
-      display:'flex', gap:12, alignItems:'center', justifyContent:'space-between',
+      display:'grid',
+      gridTemplateColumns:'1fr auto auto auto',
+      gap:12, alignItems:'center',
       margin:'12px 0'
     }}>
-      <div style={{display:'flex', gap:12, alignItems:'center'}}>
+      {/* búsqueda */}
+      <input
+        type="search"
+        placeholder="Buscar cliente…"
+        value={q}
+        onChange={e => setParam('q', e.target.value)}
+        onKeyDown={ev => { if (ev.key === 'Enter') setParam('page', '1'); }}
+        style={{border:'1px solid #cbd5e1', borderRadius:6, padding:'8px 10px'}}
+      />
+
+      {/* tamaño */}
+      <div style={{display:'flex', gap:8, alignItems:'center', justifyContent:'flex-end'}}>
         <label style={{fontSize:12, color:'#475569'}}>Tamaño</label>
         <select
           value={limit}
@@ -37,7 +55,10 @@ function Toolbar({ page, limit, sort, setParam }) {
         >
           {PAGE_SIZES.map(s => <option key={s} value={s}>{s}</option>)}
         </select>
+      </div>
 
+      {/* orden */}
+      <div style={{display:'flex', gap:8, alignItems:'center', justifyContent:'flex-end'}}>
         <label style={{fontSize:12, color:'#475569'}}>Orden</label>
         <select
           value={sort}
@@ -46,25 +67,27 @@ function Toolbar({ page, limit, sort, setParam }) {
         >
           <option value="-date">Fecha ↓ (recientes)</option>
           <option value="date">Fecha ↑ (antiguos)</option>
+          <option value="-total">Total ↓</option>
+          <option value="total">Total ↑</option>
         </select>
       </div>
 
-      <Link
-        to="/sales/new"
-        style={{textDecoration:'none', padding:'6px 10px', border:'1px solid #cbd5e1', borderRadius:6}}
-      >
-        + Nueva venta
-      </Link>
+      {/* alta */}
+      <div style={{textAlign:'right'}}>
+        <Link
+          to="/sales/new"
+          style={{textDecoration:'none', padding:'8px 12px', border:'1px solid #cbd5e1', borderRadius:6}}
+        >
+          + Nueva venta
+        </Link>
+      </div>
     </div>
   );
 }
 
 function Pagination({ page, limit, count, setParam }) {
-  // Cuando la API no devuelve total páginas, usamos heurística:
-  // - deshabilitar Siguiente si count < limit (no hay más)
-  // - habilitar Anterior si page > 1
   const canPrev = page > 1;
-  const canNext = count >= limit; // si vino “limit” elementos, asumimos que posiblemente hay otra página
+  const canNext = count >= limit; // heurística: si llegaron "limit", podría haber otra página
 
   return (
     <div style={{
@@ -110,33 +133,46 @@ function Pagination({ page, limit, count, setParam }) {
 
 export default function Sales() {
   const [sp, setSp] = useSearchParams();
+
   const page  = useIntParam(sp, 'page', 1);
   const limit = useIntParam(sp, 'limit', 10);
   const sort  = sp.get('sort') || '-date';
+  const q     = sp.get('q') || '';
 
   const setParam = (k, v) => {
     const n = new URLSearchParams(sp);
     if (v == null || v === '') n.delete(k);
     else n.set(k, v);
-    // si cambia limit o sort, volvemos a página 1
-    if ((k === 'limit' || k === 'sort') && page !== 1) n.set('page', '1');
+    // al cambiar q/limit/sort, volvemos a la primera página
+    if ((k === 'q' || k === 'limit' || k === 'sort') && page !== 1) n.set('page', '1');
     setSp(n, { replace: true });
   };
 
+  const toggleSort = (col) => {
+    const isThis = sort.replace('-', '') === col;
+    const next = isThis
+      ? (sort.startsWith('-') ? col : `-${col}`)
+      : `-${col}`; // default al cambiar de columna: desc
+    setParam('sort', next);
+  };
+
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: ['sales.list', { page, limit, sort }],
-    queryFn: () => fetchOrdersSearch({ page, limit, sort }),
+    queryKey: ['sales.list', { page, limit, sort, q }],
+    queryFn: () => fetchOrdersSearch({ page, limit, sort, q }),
     keepPreviousData: true
   });
 
   const items = useMemo(() => data?.items ?? [], [data]);
   const showing = items.length;
 
+  const activeCol = sort.replace('-', '');
+  const dir = sort.startsWith('-') ? 'desc' : 'asc';
+
   return (
     <div style={{maxWidth: 960, margin: '0 auto'}}>
       <h1 style={{fontSize: 20, fontWeight: 600, margin:'8px 0 12px'}}>Ventas</h1>
 
-      <Toolbar page={page} limit={limit} sort={sort} setParam={setParam} />
+      <Toolbar page={page} limit={limit} sort={sort} q={q} setParam={setParam} />
 
       {isError && (
         <div style={{color:'#b91c1c', marginBottom:8}}>
@@ -152,9 +188,25 @@ export default function Sales() {
           <thead>
             <tr style={{background:'#f8fafc', textAlign:'left'}}>
               <th style={{padding:'10px 8px', fontSize:12, color:'#475569'}}>ID</th>
-              <th style={{padding:'10px 8px', fontSize:12, color:'#475569'}}>Fecha</th>
+
+              <th
+                style={{padding:'10px 8px', fontSize:12, color:'#475569', cursor:'pointer'}}
+                onClick={() => toggleSort('date')}
+                title="Ordenar por fecha"
+              >
+                Fecha <Caret active={activeCol==='date'} dir={dir}/>
+              </th>
+
               <th style={{padding:'10px 8px', fontSize:12, color:'#475569'}}>Cliente</th>
-              <th style={{padding:'10px 8px', fontSize:12, color:'#475569', textAlign:'right'}}>Total</th>
+
+              <th
+                style={{padding:'10px 8px', fontSize:12, color:'#475569', textAlign:'right', cursor:'pointer'}}
+                onClick={() => toggleSort('total')}
+                title="Ordenar por total"
+              >
+                Total <Caret active={activeCol==='total'} dir={dir}/>
+              </th>
+
               <th style={{padding:'10px 8px', fontSize:12, color:'#475569'}}></th>
             </tr>
           </thead>
@@ -180,7 +232,9 @@ export default function Sales() {
       )}
 
       <div style={{marginTop:8, fontSize:12, color:'#334155'}}>
-        {showing > 0 ? `Mostrando ${showing} registro(s)` : 'Sin datos'}
+        {showing > 0
+          ? `Mostrando ${showing} registro(s)`
+          : (q ? 'Sin resultados para la búsqueda' : 'Sin datos')}
       </div>
 
       <Pagination
