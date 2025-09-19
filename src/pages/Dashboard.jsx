@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { http } from '../lib/http.js';
 import { fmtCurrency } from '../lib/format.js';
+import ReceivablesKpis from '../components/ReceivablesKpis.jsx';
 
 const API = import.meta.env.VITE_API_BASE_URL || '';
 const fmtARS = (v)=> new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS',maximumFractionDigits:0}).format(v??0);
