@@ -1,104 +1,23 @@
 // src/pages/masters/Clients.jsx
 import { useMemo, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams, Link } from 'react-router-dom';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { searchClients, createClient, updateClient, deleteClient } from '../../services/clients.service';
+import { listClients, createClient, updateClient, removeClient } from '../../services/clients.service';
 
 function Label({ children }) {
   return <span style={{ fontSize: 12, color: '#475569', display: 'block', marginBottom: 4 }}>{children}</span>;
 }
-function Btn(props) {
+
+function Text({ value, onChange, placeholder, style, ...rest }) {
   return (
-    <button
-      {...props}
-      style={{
-        border: '1px solid #cbd5e1',
-        borderRadius: 8,
-        padding: '8px 10px',
-        background: '#fff',
-        ...props.style,
-      }}
+    <input
+      type="text"
+      value={value}
+      placeholder={placeholder}
+      onChange={(e) => onChange(e.target.value)}
+      style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '8px 10px', width: '100%', ...style }}
+      {...rest}
     />
-  );
-}
-
-function Form({ initial, onCancel, onSubmit }) {
-  const [f, setF] = useState(() => ({
-    id: initial?.id,
-    nombre: initial?.nombre ?? '',
-    cuit: initial?.cuit ?? '',
-    direccion: initial?.direccion ?? '',
-    condicionesPago: initial?.condicionesPago ?? '',
-    listasPrecio: Array.isArray(initial?.listasPrecio) ? initial.listasPrecio.join(', ') : (initial?.listasPrecio ?? ''),
-    email: initial?.email ?? '',
-    telefono: initial?.telefono ?? '',
-    activo: initial?.activo ?? true,
-  }));
-  const set = (p) => setF((x) => ({ ...x, ...p }));
-  const canSave = f.nombre.trim().length > 0;
-
-  return (
-    <div style={{ border: '1px solid #e2e8f0', borderRadius: 12, padding: 14, background: '#fff', marginBottom: 12 }}>
-      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', gap: 10, alignItems: 'end' }}>
-        <div>
-          <Label>Nombre *</Label>
-          <input value={f.nombre} onChange={(e) => set({ nombre: e.target.value })}
-                 placeholder="Razón social / Nombre"
-                 style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '8px 10px', width: '100%' }} />
-        </div>
-        <div>
-          <Label>CUIT</Label>
-          <input value={f.cuit} onChange={(e) => set({ cuit: e.target.value })}
-                 placeholder="CUIT"
-                 style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '8px 10px', width: '100%' }} />
-        </div>
-        <div>
-          <Label>Teléfono</Label>
-          <input value={f.telefono} onChange={(e) => set({ telefono: e.target.value })}
-                 placeholder="Ej: +54 11 ..."
-                 style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '8px 10px', width: '100%' }} />
-        </div>
-
-        <div>
-          <Label>Dirección</Label>
-          <input value={f.direccion} onChange={(e) => set({ direccion: e.target.value })}
-                 placeholder="Calle 123, CABA"
-                 style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '8px 10px', width: '100%' }} />
-        </div>
-        <div>
-          <Label>Condiciones de pago</Label>
-          <input value={f.condicionesPago} onChange={(e) => set({ condicionesPago: e.target.value })}
-                 placeholder="Contado / 15d / 30d ..."
-                 style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '8px 10px', width: '100%' }} />
-        </div>
-        <div>
-          <Label>Listas de precio (csv)</Label>
-          <input value={f.listasPrecio} onChange={(e) => set({ listasPrecio: e.target.value })}
-                 placeholder="General, Mayorista A ..."
-                 style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '8px 10px', width: '100%' }} />
-        </div>
-
-        <div>
-          <Label>Email</Label>
-          <input value={f.email} onChange={(e) => set({ email: e.target.value })}
-                 placeholder="contacto@cliente.com"
-                 style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '8px 10px', width: '100%' }} />
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, color: '#334155' }}>
-            <input type="checkbox" checked={!!f.activo} onChange={(e) => set({ activo: e.target.checked })} />
-            Activo
-          </label>
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-          <Btn onClick={onCancel}>Cancelar</Btn>
-          <Btn onClick={() => onSubmit(f)} disabled={!canSave}
-               style={{ background: canSave ? '#fff' : '#f1f5f9', cursor: canSave ? 'pointer' : 'not-allowed', fontWeight: 600 }}>
-            Guardar
-          </Btn>
-        </div>
-      </div>
-    </div>
   );
 }
 
@@ -106,10 +25,11 @@ export default function Clients() {
   const [sp, setSp] = useSearchParams();
   const qc = useQueryClient();
 
-  const page  = Math.max(1, parseInt(sp.get('page')  || '1', 10));
-  const limit = [10,20,50].includes(parseInt(sp.get('limit')||'20',10)) ? parseInt(sp.get('limit')||'20',10) : 20;
-  const q     = sp.get('q') || '';
-  const sort  = sp.get('sort') || 'nombre';
+  const page = Math.max(1, parseInt(sp.get('page') || '1', 10));
+  const limit = [10, 20, 50].includes(parseInt(sp.get('limit') || '20', 10))
+    ? parseInt(sp.get('limit') || '20', 10)
+    : 20;
+  const q = sp.get('q') || '';
 
   const setParam = (k, v, { resetPage = false } = {}) => {
     const next = new URLSearchParams(sp);
@@ -118,75 +38,91 @@ export default function Clients() {
     setSp(next, { replace: true });
   };
 
-  const qKey = useMemo(() => ['clients.search', { page, limit, q, sort }], [page, limit, q, sort]);
+  const queryKey = useMemo(() => ['clients.list', { page, limit, q }], [page, limit, q]);
+
   const { data, isLoading, isError } = useQuery({
-    queryKey: qKey,
-    queryFn: () => searchClients({ page, limit, q, sort }),
+    queryKey,
+    queryFn: () => listClients({ page, limit, q }),
     keepPreviousData: true,
   });
 
   const items = data?.items ?? [];
   const hasNext = items.length === limit;
 
-  const [editing, setEditing] = useState(null);
+  // Formulario (alta/edición)
+  const empty = { id: null, nombre: '', cuit: '', direccion: '', condicionesPago: '', listasPrecio: '', email: '', telefono: '', activo: true };
+  const [form, setForm] = useState(empty);
+  const [saving, setSaving] = useState(false);
+  const editing = !!form.id;
 
-  const mutSave = useMutation({
-    mutationFn: async (form) => (form.id ? updateClient(form.id, form) : createClient(form)),
-    onSuccess: async () => { setEditing(null); await qc.invalidateQueries({ queryKey: ['clients.search'] }); },
-    onError: (e) => alert(e?.message || 'No se pudo guardar'),
-  });
+  const startNew = () => setForm(empty);
+  const startEdit = (row) => setForm({ ...empty, ...row });
 
-  const mutDelete = useMutation({
-    mutationFn: async (id) => { if (!confirm('¿Eliminar cliente?')) return; return deleteClient(id); },
-    onSuccess: async () => { await qc.invalidateQueries({ queryKey: ['clients.search'] }); },
-    onError: (e) => alert(e?.message || 'No se pudo eliminar'),
-  });
+  const doSave = async () => {
+    setSaving(true);
+    try {
+      if (editing) await updateClient(form.id, form);
+      else await createClient(form);
+      await qc.invalidateQueries({ queryKey: ['clients.list'] });
+      setForm(empty);
+      alert('Cliente guardado.');
+    } catch (e) {
+      console.warn('save client', e);
+      alert('No se pudo guardar el cliente.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const doDelete = async (row) => {
+    if (!confirm(`¿Eliminar cliente "${row.nombre}"?`)) return;
+    try {
+      await removeClient(row.id);
+      await qc.invalidateQueries({ queryKey: ['clients.list'] });
+      alert('Cliente eliminado.');
+    } catch (e) {
+      console.warn('delete client', e);
+      alert('No se pudo eliminar.');
+    }
+  };
 
   return (
     <div style={{ maxWidth: 1100, margin: '0 auto' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
         <h1 style={{ fontSize: 20, fontWeight: 600, margin: 0, flex: 1 }}>Clientes</h1>
-        <Link to="/masters" style={{ textDecoration: 'none', border: '1px solid #cbd5e1', borderRadius: 8, padding: '8px 10px' }}>← Maestros</Link>
-        <Btn onClick={() => setEditing({})}>+ Nuevo</Btn>
+        <Link to="/masters" style={{ textDecoration: 'none', border: '1px solid #cbd5e1', borderRadius: 8, padding: '8px 10px' }}>
+          ← Volver a Maestros
+        </Link>
       </div>
 
       {/* Filtros */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 160px 160px', gap: 12, alignItems: 'end', marginBottom: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 160px 160px', gap: 12, alignItems: 'end', marginBottom: 12 }}>
         <div>
-          <Label>Buscar</Label>
-          <input value={q} onChange={(e) => setParam('q', e.target.value, { resetPage: true })}
-                 placeholder="Nombre / CUIT / email…"
-                 style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '8px 10px', width: '100%' }} />
-        </div>
-        <div>
-          <Label>Orden</Label>
-          <select value={sort} onChange={(e) => setParam('sort', e.target.value, { resetPage: true })}
-                  style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '8px 10px', width: '100%' }}>
-            <option value="nombre">Nombre</option>
-            <option value="-nombre">Nombre desc.</option>
-            <option value="cuit">CUIT</option>
-            <option value="-cuit">CUIT desc.</option>
-          </select>
+          <Label>Buscar (nombre / CUIT / email)</Label>
+          <Text value={q} onChange={(v) => setParam('q', v, { resetPage: true })} placeholder="Ej: Green" />
         </div>
         <div>
           <Label>Tamaño página</Label>
-          <select value={String(limit)} onChange={(e) => setParam('limit', e.target.value, { resetPage: true })}
-                  style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '8px 10px', width: '100%' }}>
+          <select
+            value={String(limit)}
+            onChange={(e) => setParam('limit', e.target.value, { resetPage: true })}
+            style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '8px 10px', width: '100%' }}
+          >
             <option value="10">10 filas</option>
             <option value="20">20 filas</option>
             <option value="50">50 filas</option>
           </select>
         </div>
+        <div>
+          <Label>Acciones</Label>
+          <button
+            onClick={() => { const next = new URLSearchParams(); next.set('page', '1'); next.set('limit', String(limit)); setSp(next, { replace: true }); }}
+            style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '8px 10px', background: '#fff', width: '100%' }}
+          >
+            Limpiar filtros
+          </button>
+        </div>
       </div>
-
-      {/* Form */}
-      {editing && (
-        <Form
-          initial={editing?.id ? editing : null}
-          onCancel={() => setEditing(null)}
-          onSubmit={(f) => mutSave.mutate(f)}
-        />
-      )}
 
       {/* Estado */}
       {isError && <div style={{ color: '#b91c1c', marginBottom: 8 }}>Error cargando clientes.</div>}
@@ -197,36 +133,34 @@ export default function Clients() {
         <table style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid #e2e8f0', borderRadius: 8, overflow: 'hidden' }}>
           <thead style={{ background: '#f8fafc' }}>
             <tr>
+              <th style={{ textAlign: 'left', padding: '10px 8px', fontSize: 12, color: '#334155' }}>ID</th>
               <th style={{ textAlign: 'left', padding: '10px 8px', fontSize: 12, color: '#334155' }}>Nombre</th>
               <th style={{ textAlign: 'left', padding: '10px 8px', fontSize: 12, color: '#334155' }}>CUIT</th>
-              <th style={{ textAlign: 'left', padding: '10px 8px', fontSize: 12, color: '#334155' }}>Dirección</th>
               <th style={{ textAlign: 'left', padding: '10px 8px', fontSize: 12, color: '#334155' }}>Email</th>
               <th style={{ textAlign: 'left', padding: '10px 8px', fontSize: 12, color: '#334155' }}>Teléfono</th>
-              <th style={{ textAlign: 'center', padding: '10px 8px', fontSize: 12, color: '#334155' }}>Activo</th>
               <th style={{ textAlign: 'left', padding: '10px 8px', fontSize: 12, color: '#334155' }}>Acciones</th>
             </tr>
           </thead>
           <tbody>
             {items.map((c) => (
-              <tr key={c.id} style={{ borderTop: '1px solid #e2e8f0' }}>
+              <tr key={c.id ?? `loc-${c.nombre}`} style={{ borderTop: '1px solid #e2e8f0' }}>
+                <td style={{ padding: '10px 8px' }}>{c.id ?? '—'}</td>
                 <td style={{ padding: '10px 8px' }}>{c.nombre}</td>
                 <td style={{ padding: '10px 8px' }}>{c.cuit || '—'}</td>
-                <td style={{ padding: '10px 8px' }}>{c.direccion || '—'}</td>
                 <td style={{ padding: '10px 8px' }}>{c.email || '—'}</td>
                 <td style={{ padding: '10px 8px' }}>{c.telefono || '—'}</td>
-                <td style={{ padding: '10px 8px', textAlign: 'center' }}>
-                  <span style={{ padding: '2px 8px', borderRadius: 999, border: '1px solid #cbd5e1', background: c.activo ? '#dcfce7' : '#fee2e2', fontSize: 12 }}>
-                    {c.activo ? 'Sí' : 'No'}
-                  </span>
-                </td>
                 <td style={{ padding: '10px 8px', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  <Btn onClick={() => setEditing(c)}>Editar</Btn>
-                  <Btn onClick={() => mutDelete.mutate(c.id)} style={{ borderColor: '#ef4444' }}>Eliminar</Btn>
+                  <button onClick={() => startEdit(c)} style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '6px 8px', background: '#fff' }}>
+                    Editar
+                  </button>
+                  <button onClick={() => doDelete(c)} style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '6px 8px', background: '#fff' }}>
+                    Eliminar
+                  </button>
                 </td>
               </tr>
             ))}
             {items.length === 0 && (
-              <tr><td colSpan={7} style={{ padding: 16, color: '#64748b' }}>Sin resultados.</td></tr>
+              <tr><td colSpan={6} style={{ padding: 16, color: '#64748b' }}>Sin resultados.</td></tr>
             )}
           </tbody>
         </table>
@@ -234,16 +168,106 @@ export default function Clients() {
 
       {/* Paginación */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
-        <div style={{ fontSize: 12, color: '#475569' }}>Página {page} · {items.length} de {limit}</div>
+        <div style={{ fontSize: 12, color: '#475569' }}>
+          Página {page} · {items.length} de {limit}
+        </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <Btn onClick={() => setParam('page', String(page - 1))} disabled={page <= 1}
-               style={{ background: page <= 1 ? '#f1f5f9' : '#fff', cursor: page <= 1 ? 'not-allowed' : 'pointer' }}>
+          <button
+            onClick={() => setParam('page', String(page - 1))}
+            disabled={page <= 1}
+            style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '8px 10px',
+                     background: page <= 1 ? '#f1f5f9' : '#fff', cursor: page <= 1 ? 'not-allowed' : 'pointer' }}
+          >
             ← Anterior
-          </Btn>
-          <Btn onClick={() => setParam('page', String(page + 1))} disabled={!hasNext}
-               style={{ background: !hasNext ? '#f1f5f9' : '#fff', cursor: !hasNext ? 'not-allowed' : 'pointer' }}>
+          </button>
+          <button
+            onClick={() => setParam('page', String(page + 1))}
+            disabled={!hasNext}
+            style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '8px 10px',
+                     background: !hasNext ? '#f1f5f9' : '#fff', cursor: !hasNext ? 'not-allowed' : 'pointer' }}
+          >
             Siguiente →
-          </Btn>
+          </button>
+        </div>
+      </div>
+
+      {/* Formulario alta/edición */}
+      <div style={{ marginTop: 16, border: '1px solid #e2e8f0', borderRadius: 12, padding: 12 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+          <div style={{ fontWeight: 600 }}>{editing ? `Editar cliente #${form.id}` : 'Nuevo cliente'}</div>
+          {editing ? (
+            <button onClick={startNew} style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '6px 8px', background: '#fff' }}>
+              Cancelar edición
+            </button>
+          ) : null}
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div>
+            <Label>Nombre</Label>
+            <Text value={form.nombre} onChange={v => setForm(f => ({ ...f, nombre: v }))} placeholder="Razón social / nombre" />
+          </div>
+          <div>
+            <Label>CUIT</Label>
+            <Text value={form.cuit} onChange={v => setForm(f => ({ ...f, cuit: v }))} placeholder="CUIT" />
+          </div>
+          <div>
+            <Label>Email</Label>
+            <Text value={form.email} onChange={v => setForm(f => ({ ...f, email: v }))} placeholder="email@dominio.com" />
+          </div>
+          <div>
+            <Label>Teléfono</Label>
+            <Text value={form.telefono} onChange={v => setForm(f => ({ ...f, telefono: v }))} placeholder="+54 11 ..." />
+          </div>
+          <div style={{ gridColumn: '1 / -1' }}>
+            <Label>Dirección</Label>
+            <Text value={form.direccion} onChange={v => setForm(f => ({ ...f, direccion: v }))} placeholder="Calle 123, Ciudad" />
+          </div>
+          <div>
+            <Label>Condiciones de pago</Label>
+            <Text value={form.condicionesPago} onChange={v => setForm(f => ({ ...f, condicionesPago: v }))} placeholder="Contado / 15 días / 30 días" />
+          </div>
+          <div>
+            <Label>Listas de precios</Label>
+            <Text value={form.listasPrecio} onChange={v => setForm(f => ({ ...f, listasPrecio: v }))} placeholder="Lista A / B ..." />
+          </div>
+          <div>
+            <Label>Activo</Label>
+            <select
+              value={form.activo ? '1' : '0'}
+              onChange={(e) => setForm(f => ({ ...f, activo: e.target.value === '1' }))}
+              style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '8px 10px', width: '100%' }}
+            >
+              <option value="1">Sí</option>
+              <option value="0">No</option>
+            </select>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
+          <button
+            onClick={doSave}
+            disabled={saving || !form.nombre.trim()}
+            style={{
+              border: '1px solid #cbd5e1',
+              borderRadius: 8,
+              padding: '10px 12px',
+              background: saving || !form.nombre.trim() ? '#f1f5f9' : '#fff',
+              cursor: saving || !form.nombre.trim() ? 'not-allowed' : 'pointer',
+              fontWeight: 600,
+            }}
+          >
+            {saving ? 'Guardando…' : 'Guardar'}
+          </button>
+          {!editing && (
+            <button
+              onClick={() => setForm(empty)}
+              disabled={saving}
+              style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '10px 12px', background: '#fff' }}
+            >
+              Limpiar
+            </button>
+          )}
         </div>
       </div>
     </div>
