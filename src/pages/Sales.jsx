@@ -16,22 +16,21 @@ function Label({ children }) {
 export default function Sales() {
   const [sp, setSp] = useSearchParams();
 
-  // === Parámetros desde la URL (con defaults) ===
+  // URL → estado
   const page  = Math.max(1, parseInt(sp.get('page')  || '1', 10));
   const limit = [10, 20, 50].includes(parseInt(sp.get('limit') || '20', 10))
     ? parseInt(sp.get('limit') || '20', 10)
     : 20;
-  const sort  = sp.get('sort') || '-date';    // -date | date | -total | total
+  const sort  = sp.get('sort') || '-date'; // -date | date | -total | total
   const q     = sp.get('q') || '';
-  const from  = sp.get('from') || '';         // YYYY-MM-DD
-  const to    = sp.get('to')   || '';         // YYYY-MM-DD
+  const onlyFinal = sp.get('onlyFinal') === '1'; // nuevo filtro (front only)
 
   const queryKey = useMemo(
-    () => ['orders.search', { page, limit, sort, q, from, to }],
-    [page, limit, sort, q, from, to]
+    () => ['orders.search', { page, limit, sort, q }],
+    [page, limit, sort, q]
   );
 
-  // Helper para setear params (y opcionalmente resetear page a 1)
+  // Helpers params
   const setParam = (key, value, { resetPage = false } = {}) => {
     const next = new URLSearchParams(sp);
     if (value === undefined || value === null || value === '') next.delete(key);
@@ -42,25 +41,16 @@ export default function Sales() {
 
   const { data, isLoading, isError } = useQuery({
     queryKey,
-    queryFn: () => fetchOrders({ page, limit, sort, q, from, to }),
+    queryFn: () => fetchOrders({ page, limit, sort, q }),
     keepPreviousData: true,
   });
 
-  const items = data?.items ?? [];
+  // Datos + filtro “solo finales” (no rompe backend)
+  const baseItems = data?.items ?? [];
+  const items = onlyFinal ? baseItems.filter(x => x._origin === 'sales') : baseItems;
 
-  // Info de paginación si el backend la provee
-  const total     = Number.isFinite(data?.total) ? Number(data.total) : undefined;
-  const pages     = Number.isFinite(data?.pages) ? Number(data.pages) : (total ? Math.max(1, Math.ceil(total / limit)) : undefined);
-  const hasPrev   = page > 1;
-  const hasNext   = pages ? page < pages : (items.length === limit); // heurística cuando no hay pages/total
-  const rangeFrom = (page - 1) * limit + (items.length ? 1 : 0);
-  const rangeTo   = (page - 1) * limit + items.length;
-
-  // Handlers de navegación
-  const goFirst = () => setParam('page', '1');
-  const goPrev  = () => setParam('page', String(page - 1));
-  const goNext  = () => setParam('page', String(page + 1));
-  const goLast  = () => { if (pages) setParam('page', String(pages)); };
+  // Heurística de paginación si no hay total/páginas
+  const hasNext = items.length === limit;
 
   return (
     <div style={{ maxWidth: 980, margin: '0 auto' }}>
@@ -74,6 +64,7 @@ export default function Sales() {
             borderRadius: 8,
             padding: '8px 10px',
             fontSize: 14,
+            background: '#fff',
           }}
         >
           + Nueva venta
@@ -84,7 +75,7 @@ export default function Sales() {
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: '1fr 140px 140px 160px 160px',
+          gridTemplateColumns: '1fr 160px 160px 160px 140px',
           gap: 12,
           alignItems: 'end',
           marginBottom: 12,
@@ -97,26 +88,6 @@ export default function Sales() {
             value={q}
             onChange={(e) => setParam('q', e.target.value, { resetPage: true })}
             placeholder="Ej: Green & Co"
-            style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '8px 10px', width: '100%' }}
-          />
-        </div>
-
-        <div>
-          <Label>Desde</Label>
-          <input
-            type="date"
-            value={from}
-            onChange={(e) => setParam('from', e.target.value, { resetPage: true })}
-            style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '8px 10px', width: '100%' }}
-          />
-        </div>
-
-        <div>
-          <Label>Hasta</Label>
-          <input
-            type="date"
-            value={to}
-            onChange={(e) => setParam('to', e.target.value, { resetPage: true })}
             style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '8px 10px', width: '100%' }}
           />
         </div>
@@ -147,22 +118,40 @@ export default function Sales() {
             <option value="50">50 filas</option>
           </select>
         </div>
-      </div>
 
-      {/* Acciones auxiliares */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-        <button
-          onClick={() => {
-            const next = new URLSearchParams();
-            next.set('page', '1');
-            next.set('limit', String(limit));
-            next.set('sort', '-date');
-            setSp(next, { replace: true });
-          }}
-          style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '8px 10px', background: '#fff' }}
-        >
-          Limpiar filtros
-        </button>
+        <div>
+          <Label>Origen</Label>
+          <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 14, color: '#0f172a' }}>
+            <input
+              type="checkbox"
+              checked={onlyFinal}
+              onChange={(e) => setParam('onlyFinal', e.target.checked ? '1' : '', { resetPage: true })}
+            />
+            Solo finales (/sales)
+          </label>
+        </div>
+
+        <div>
+          <Label>Acciones</Label>
+          <button
+            onClick={() => {
+              const next = new URLSearchParams();
+              next.set('page', '1');
+              next.set('limit', String(limit));
+              next.set('sort', '-date');
+              setSp(next, { replace: true });
+            }}
+            style={{
+              border: '1px solid #cbd5e1',
+              borderRadius: 8,
+              padding: '8px 10px',
+              width: '100%',
+              background: '#fff',
+            }}
+          >
+            Limpiar filtros
+          </button>
+        </div>
       </div>
 
       {/* Estado */}
@@ -182,11 +171,12 @@ export default function Sales() {
         >
           <thead style={{ background: '#f8fafc' }}>
             <tr>
-              <th style={{ textAlign: 'left', padding: '10px 8px', fontWeight: 600, fontSize: 12, color: '#334155' }}>ID</th>
-              <th style={{ textAlign: 'left', padding: '10px 8px', fontWeight: 600, fontSize: 12, color: '#334155' }}>Fecha</th>
-              <th style={{ textAlign: 'left', padding: '10px 8px', fontWeight: 600, fontSize: 12, color: '#334155' }}>Cliente</th>
+              <th style={{ textAlign: 'left',  padding: '10px 8px', fontWeight: 600, fontSize: 12, color: '#334155' }}>ID</th>
+              <th style={{ textAlign: 'left',  padding: '10px 8px', fontWeight: 600, fontSize: 12, color: '#334155' }}>Fecha</th>
+              <th style={{ textAlign: 'left',  padding: '10px 8px', fontWeight: 600, fontSize: 12, color: '#334155' }}>Cliente</th>
               <th style={{ textAlign: 'right', padding: '10px 8px', fontWeight: 600, fontSize: 12, color: '#334155' }}>Total</th>
-              <th style={{ textAlign: 'left', padding: '10px 8px', fontWeight: 600, fontSize: 12, color: '#334155' }}>Acciones</th>
+              <th style={{ textAlign: 'left',  padding: '10px 8px', fontWeight: 600, fontSize: 12, color: '#334155' }}>Origen</th>
+              <th style={{ textAlign: 'left',  padding: '10px 8px', fontWeight: 600, fontSize: 12, color: '#334155' }}>Acciones</th>
             </tr>
           </thead>
           <tbody>
@@ -194,11 +184,40 @@ export default function Sales() {
               <tr key={o.id} style={{ borderTop: '1px solid #e2e8f0' }}>
                 <td style={{ padding: '10px 8px' }}>#{o.id}</td>
                 <td style={{ padding: '10px 8px' }}>
-                  {new Date(o.date).toLocaleDateString('es-AR')}
+                  {o.date ? new Date(o.date).toLocaleDateString('es-AR') : '—'}
                 </td>
-                <td style={{ padding: '10px 8px' }}>{o.client}</td>
-                <td style={{ padding: '10px 8px', textAlign: 'right' }}>
-                  {fmtCurrency(o.total)}
+                <td style={{ padding: '10px 8px' }}>{o.client || '—'}</td>
+                <td style={{ padding: '10px 8px', textAlign: 'right' }}>{fmtCurrency(o.total)}</td>
+                <td style={{ padding: '10px 8px' }}>
+                  {o._origin === 'sales' ? (
+                    <span
+                      title="Viene de /sales/search (modelo final)"
+                      style={{
+                        padding: '2px 8px',
+                        borderRadius: 999,
+                        border: '1px solid #bbf7d0',
+                        background: '#f0fdf4',
+                        color: '#166534',
+                        fontSize: 12,
+                      }}
+                    >
+                      final
+                    </span>
+                  ) : (
+                    <span
+                      title="Viene de /orders/search (legacy/semilla)"
+                      style={{
+                        padding: '2px 8px',
+                        borderRadius: 999,
+                        border: '1px solid #e2e8f0',
+                        background: '#f8fafc',
+                        color: '#64748b',
+                        fontSize: 12,
+                      }}
+                    >
+                      legacy
+                    </span>
+                  )}
                 </td>
                 <td style={{ padding: '10px 8px' }}>
                   <Link to={`/orders/${o.id}`} style={{ textDecoration: 'none' }}>
@@ -209,7 +228,7 @@ export default function Sales() {
             ))}
             {items.length === 0 && (
               <tr>
-                <td colSpan={5} style={{ padding: 16, color: '#64748b' }}>
+                <td colSpan={6} style={{ padding: 16, color: '#64748b' }}>
                   Sin resultados.
                 </td>
               </tr>
@@ -218,45 +237,27 @@ export default function Sales() {
         </table>
       )}
 
-      {/* Footer de resultados */}
-      <div style={{ marginTop: 8, fontSize: 12, color: '#475569', display: 'flex', justifyContent: 'space-between' }}>
-        <div>
-          {total
-            ? `Mostrando ${rangeFrom || 0}–${rangeTo || 0} de ${total}`
-            : `Página ${page} · ${items.length} de ${limit}`}
+      {/* Paginación */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
+        <div style={{ fontSize: 12, color: '#475569' }}>
+          Página {page} · {items.length} de {limit}
         </div>
-
-        {/* Paginación */}
         <div style={{ display: 'flex', gap: 8 }}>
           <button
-            onClick={goFirst}
-            disabled={!hasPrev || !pages}
+            onClick={() => setParam('page', String(page - 1))}
+            disabled={page <= 1}
             style={{
               border: '1px solid #cbd5e1',
               borderRadius: 8,
               padding: '8px 10px',
-              background: !hasPrev || !pages ? '#f1f5f9' : '#fff',
-              cursor: !hasPrev || !pages ? 'not-allowed' : 'pointer',
-            }}
-            title="Primera"
-          >
-            «
-          </button>
-          <button
-            onClick={goPrev}
-            disabled={!hasPrev}
-            style={{
-              border: '1px solid #cbd5e1',
-              borderRadius: 8,
-              padding: '8px 10px',
-              background: !hasPrev ? '#f1f5f9' : '#fff',
-              cursor: !hasPrev ? 'not-allowed' : 'pointer',
+              background: page <= 1 ? '#f1f5f9' : '#fff',
+              cursor: page <= 1 ? 'not-allowed' : 'pointer',
             }}
           >
             ← Anterior
           </button>
           <button
-            onClick={goNext}
+            onClick={() => setParam('page', String(page + 1))}
             disabled={!hasNext}
             style={{
               border: '1px solid #cbd5e1',
@@ -267,20 +268,6 @@ export default function Sales() {
             }}
           >
             Siguiente →
-          </button>
-          <button
-            onClick={goLast}
-            disabled={!pages || page >= pages}
-            style={{
-              border: '1px solid #cbd5e1',
-              borderRadius: 8,
-              padding: '8px 10px',
-              background: !pages || page >= pages ? '#f1f5f9' : '#fff',
-              cursor: !pages || page >= pages ? 'not-allowed' : 'pointer',
-            }}
-            title={pages ? `Ir a ${pages}` : 'Última (desconocida)'}
-          >
-            »
           </button>
         </div>
       </div>
