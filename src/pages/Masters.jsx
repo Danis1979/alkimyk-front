@@ -1,5 +1,6 @@
 // src/pages/Masters.jsx
 import { Link, Routes, Route } from 'react-router-dom';
+import Products from './masters/Products.jsx';  // 👈 nuevo import
 
 function Card({ to, title, subtitle }) {
   return (
@@ -70,12 +71,11 @@ export default function Masters() {
     <div style={{ maxWidth: 980, margin: '0 auto' }}>
       <Routes>
         <Route index element={<Home />} />
-        <Route path="products"  element={<Stub title="Productos / Insumos" />} />
+        <Route path="products"  element={<Products />} />     {/* 👈 ahora ABM real */}
         <Route path="clients"   element={<Stub title="Clientes" />} />
         <Route path="suppliers" element={<Stub title="Proveedores" />} />
         <Route path="uom"       element={<Stub title="Unidades de medida" />} />
         <Route path="prices"    element={<Stub title="Listas de precios" />} />
-        {/* fallback de seguridad dentro de /masters */}
         <Route path="*" element={<Home />} />
       </Routes>
     </div>

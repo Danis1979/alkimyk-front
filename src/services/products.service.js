@@ -1,63 +1,90 @@
 // src/services/products.service.js
 import { http } from '../lib/http';
 
-// Normalizador de filas
-function normProduct(p) {
+// Normalización a tu modelo
+export function normalizeProduct(p = {}) {
   return {
     id: p.id,
-    name: p.name ?? p.nombre ?? p.product ?? '',
-    sku: p.sku ?? p.codigo ?? '',
-    uom: p.uom ?? p.unidad ?? '',
-    tipo: p.tipo ?? p.type ?? 'simple',
-    costoStd: p.costoStd ?? p.costo ?? 0,
-    precioLista: p.precioLista ?? p.price ?? 0,
-    activo: (p.activo ?? p.active ?? true) ? true : false,
-    raw: p,
+    sku: p.sku ?? p.code ?? '',
+    name: p.name ?? p.nombre ?? '',
+    uom: p.uom ?? p.unidad ?? p.unit ?? '',
+    tipo: p.tipo ?? p.type ?? 'simple',                 // 'rellena' | 'simple'
+    costoStd: Number(p.costoStd ?? p.costStd ?? p.costo ?? 0) || 0,
+    precioLista: Number(p.precioLista ?? p.listPrice ?? p.precio ?? 0) || 0,
+    activo: !!(p.activo ?? p.active ?? true),
+    _raw: p,
   };
 }
 
-// Devuelve siempre {items, page, pages, total}
-export async function searchProducts({ q = '', page = 1, limit = 20, sort } = {}) {
-  const qs = new URLSearchParams();
-  if (q) qs.set('q', q);
-  if (page) qs.set('page', String(page));
-  if (limit) qs.set('limit', String(limit));
-  if (sort) qs.set('sort', sort);
-
-  // orden de prueba de endpoints posibles
-  const candidates = [
-    `/products/search?${qs.toString()}`,
-    `/products?${qs.toString()}`,
-    `/products/list?${qs.toString()}`
-  ];
-
-  for (const url of candidates) {
-    try {
-      const { data } = await http.get(url);
-      const arr = Array.isArray(data?.items)
-        ? data.items
-        : Array.isArray(data)
-        ? data
-        : Array.isArray(data?.data)
-        ? data.data
-        : Array.isArray(data?.results)
-        ? data.results
-        : [];
-      if (arr) {
-        return {
-          items: arr.map(normProduct),
-          page: data?.page ?? page,
-          pages: data?.pages ?? (data?.total ? Math.max(1, Math.ceil(data.total / limit)) : undefined),
-          total: data?.total,
-        };
-      }
-    } catch (_) {}
-  }
-  return { items: [], page, pages: undefined, total: undefined };
+// Convierte el form al payload del backend (campos canónicos)
+function toPayload(x) {
+  return {
+    id: x.id,
+    sku: x.sku?.trim() || null,
+    name: x.name?.trim() || null,
+    uom: x.uom?.trim() || null,
+    tipo: x.tipo || 'simple',
+    costoStd: Number(x.costoStd) || 0,
+    precioLista: Number(x.precioLista) || 0,
+    activo: !!x.activo,
+  };
 }
 
-export async function createProduct(payload) {
-  // payload esperado (mínimo): { name, sku?, uom?, tipo?, costoStd?, precioLista?, activo? }
+export async function searchProducts({ page = 1, limit = 20, q = '', sort = 'name' } = {}) {
+  const qs = new URLSearchParams({ page: String(page), limit: String(limit) });
+  if (q) qs.set('q', q);
+  if (sort) qs.set('sort', sort);
+
+  // 1) Intento estándar
+  try {
+    const { data } = await http.get(`/products/search?${qs.toString()}`);
+    const items = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
+    const total = data?.total ?? undefined;
+    const pages = data?.pages ?? (total ? Math.max(1, Math.ceil(total / limit)) : undefined);
+    return {
+      items: items.map(normalizeProduct),
+      page: data?.page ?? page,
+      pages,
+      total,
+    };
+  } catch (_) {}
+
+  // 2) Fallback: /products (paginado o no)
+  try {
+    const { data } = await http.get(`/products?${qs.toString()}`);
+    const arr = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
+    const total = data?.total ?? undefined;
+    const pages = data?.pages ?? (total ? Math.max(1, Math.ceil(total / limit)) : undefined);
+    return {
+      items: arr.map(normalizeProduct),
+      page,
+      pages,
+      total,
+    };
+  } catch (e) {
+    // Último recurso
+    return { items: [], page, pages: 1, total: 0 };
+  }
+}
+
+export async function createProduct(form) {
+  const payload = toPayload(form);
   const { data } = await http.post('/products', payload);
-  return data;
+  return normalizeProduct(data ?? payload);
+}
+
+export async function updateProduct(id, form) {
+  const payload = toPayload({ ...form, id });
+  try {
+    const { data } = await http.put(`/products/${id}`, payload);
+    return normalizeProduct(data ?? payload);
+  } catch (_) {
+    const { data } = await http.patch(`/products/${id}`, payload);
+    return normalizeProduct(data ?? payload);
+  }
+}
+
+export async function deleteProduct(id) {
+  await http.delete(`/products/${id}`);
+  return true;
 }
