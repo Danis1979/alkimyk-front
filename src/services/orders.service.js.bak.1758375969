@@ -1,14 +1,18 @@
+// src/services/orders.service.js
 import { http } from '../lib/http';
 
 export async function fetchOrders({ page = 1, limit = 20, sort, q } = {}) {
   const qs = new URLSearchParams({ page: String(page), limit: String(limit) });
   if (sort) qs.set('sort', sort);
   if (q) qs.set('q', q);
+
+  // Mantener compatibilidad con el backend actual (orders/search)
   const { data } = await http.get(`/orders/search?${qs.toString()}`);
-  return data;
+  return data; // { items, total, page, ... } según backend
 }
+
+// ✅ Alias para compatibilidad con Orders.jsx
 export const fetchOrdersSearch = fetchOrders;
-export const searchOrders = fetchOrders;
 
 export async function fetchOrderById(id) {
   const tryUrls = [`/orders/${id}/full`, `/orders/${id}`];
