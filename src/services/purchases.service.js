@@ -1,14 +1,14 @@
 // src/services/purchases.service.js
 import { http } from '../lib/http';
 
-// Normaliza campos posibles del backend
-function normPurchase(p = {}) {
+// Normaliza filas (nombres de campos variables)
+function normPurchase(r) {
   return {
-    id: p.id,
-    fecha: p.fecha ?? p.date ?? null,
-    supplier: p.supplier ?? p.proveedor ?? p.supplierName ?? '',
-    total: p.total ?? p.subtotal ?? 0,
-    raw: p,
+    id: r.id,
+    fecha: r.fecha ?? r.date ?? null,
+    supplier: r.supplier ?? r.proveedor ?? r.supplierName ?? r.vendor ?? '',
+    total: r.total ?? r.subtotal ?? 0,
+    raw: r,
   };
 }
 
@@ -19,36 +19,26 @@ export async function searchPurchases({ page = 1, limit = 20, sort = '-fecha', f
   if (to)   qs.set('to', to);
   if (q)    qs.set('q', q);
 
-  // Backend final: /purchases/search
+  // Backend final esperado
   try {
     const { data } = await http.get(`/purchases/search?${qs.toString()}`);
-    const items = Array.isArray(data?.items) ? data.items : (Array.isArray(data) ? data : []);
+    const items = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
     return {
       items: items.map(normPurchase),
-      page : data?.page  ?? page,
+      page: data?.page ?? page,
       pages: data?.pages ?? (data?.total ? Math.max(1, Math.ceil(data.total / limit)) : undefined),
       total: data?.total,
     };
   } catch {
-    // Fallback: /purchases (lista simple)
+    // Fallback si expone array plano
     try {
       const { data } = await http.get(`/purchases?${qs.toString()}`);
-      const arr = Array.isArray(data?.items) ? data.items : (Array.isArray(data) ? data : []);
-      return { items: arr.map(normPurchase), page, pages: undefined, total: arr.length };
-    } catch {}
-    return { items: [], page, pages: 1, total: 0 };
+      const items = Array.isArray(data) ? data : [];
+      return { items: items.map(normPurchase), page, pages: undefined, total: undefined };
+    } catch {
+      return { items: [], page, pages: undefined, total: undefined };
+    }
   }
-}
-
-export async function fetchPurchaseById(id) {
-  const urls = [`/purchases/${id}/full`, `/purchases/${id}`];
-  for (const u of urls) {
-    try {
-      const { data } = await http.get(u);
-      return data;
-    } catch {}
-  }
-  return { id, items: [] };
 }
 
 export async function createPurchase(payload) {

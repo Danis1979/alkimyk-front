@@ -2,15 +2,15 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { fmtCurrency } from '../lib/format';
-import { http } from '../lib/http';
+import { createPurchase } from '../services/purchases.service';
 import SupplierTypeahead from '../components/SupplierTypeahead';
 import ProductTypeahead from '../components/ProductTypeahead';
 
 const PM_OPTS = [
-  { value: 'Contado',        label: 'Contado' },
-  { value: 'Transferencia',  label: 'Transferencia' },
-  { value: 'Cheque',         label: 'Cheque (emitido)' },
-  { value: 'CuentaCorriente',label: 'Cuenta Corriente' },
+  { value: 'Contado',         label: 'Contado' },
+  { value: 'Transferencia',   label: 'Transferencia' },
+  { value: 'Cheque',          label: 'Cheque' },
+  { value: 'CuentaCorriente', label: 'Cuenta Corriente' },
 ];
 
 function todayYMD() {
@@ -23,21 +23,22 @@ function number(v) { const n = parseFloat(v); return Number.isFinite(n) ? n : 0;
 
 export default function PurchasesNew() {
   const navigate = useNavigate();
+
   const [date, setDate] = useState(todayYMD());
   const [pm, setPm] = useState('Contado');
 
   // Proveedor
-  const [supplierId, setSupplierId]   = useState(null);
+  const [supplierId, setSupplierId] = useState(null);
   const [supplierLabel, setSupplierLabel] = useState('');
 
-  // Ítems (insumos/productos)
+  // Ítems de compra (insumo o producto). Mantenemos productId para ambos casos.
   const [items, setItems] = useState([
     { key: 1, productId: null, productLabel: '', qty: 1, price: 0 },
   ]);
 
   const totals = useMemo(() => {
     const subtotal = items.reduce((acc, it) => acc + number(it.qty) * number(it.price), 0);
-    const iva = 0;
+    const iva = 0; // si luego hay tratamiento de IVA, acá se calcula
     return { subtotal, iva, total: subtotal + iva };
   }, [items]);
 
@@ -48,6 +49,7 @@ export default function PurchasesNew() {
     return valid.length > 0;
   }, [supplierId, supplierLabel, date, items]);
 
+  // helpers renglones
   const addItem = () => {
     const maxKey = items.reduce((m, it) => Math.max(m, it.key), 0);
     setItems([...items, { key: maxKey + 1, productId: null, productLabel: '', qty: 1, price: 0 }]);
@@ -56,19 +58,16 @@ export default function PurchasesNew() {
   const updateItem = (key, patch) => setItems(items.map(it => (it.key === key ? { ...it, ...patch } : it)));
 
   const onSubmit = async () => {
-    // Según tu modelo: purchases {supplierId, fecha, items:[{insumoId|productId, qty, price}], total, pm, estado}
     const payload = {
       supplierId,
-      supplier: supplierLabel.trim() || null, // por si admitís texto libre
+      supplier: supplierLabel.trim() || null,  // tolera libre si no hay id
       fecha: new Date(date).toISOString(),
       pm,
       estado: 'Confirmada',
       items: items
         .filter(it => (it.productId || it.productLabel.trim()) && number(it.qty) > 0)
         .map(it => ({
-          // Preferimos insumoId para compras; si tu backend acepta productId, igual lo verá
-          insumoId: it.productId ?? null,
-          productId: it.productId ?? null, // lo mandamos también por compatibilidad
+          productId: it.productId,              // el backend puede aceptar productId para insumo/producto
           product: it.productLabel.trim() || null,
           qty: number(it.qty),
           price: number(it.price),
@@ -79,20 +78,30 @@ export default function PurchasesNew() {
     };
 
     try {
-      const { data } = await http.post('/purchases', payload);
-      if (data?.id) { navigate('/purchases', { replace: true }); return; }
+      const data = await createPurchase(payload);
+      // Si el backend devuelve id, podríamos redirigir a detalle cuando exista /purchases/:id
+      if (data?.id) {
+        navigate('/purchases', { replace: true });
+        return;
+      }
       navigate('/purchases', { replace: true });
     } catch (err) {
-      console.warn('POST /purchases no disponible. Preview:', payload, err);
-      alert('No se pudo enviar (¿/purchases listo?). JSON:\n\n' + JSON.stringify(payload, null, 2));
+      console.warn('POST /purchases falló. Preview payload:', payload, err);
+      alert('No se pudo guardar la compra.\n\nPayload:\n' + JSON.stringify(payload, null, 2));
     }
   };
 
   return (
     <div style={{ maxWidth: 980, margin: '0 auto' }}>
+      {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
         <h1 style={{ fontSize: 20, fontWeight: 600, margin: 0, flex: 1 }}>Nueva compra</h1>
-        <Link to="/purchases" style={{ textDecoration: 'none', border: '1px solid #cbd5e1', borderRadius: 8, padding: '8px 10px', fontSize: 14 }}>← Volver</Link>
+        <Link
+          to="/purchases"
+          style={{ textDecoration: 'none', border: '1px solid #cbd5e1', borderRadius: 8, padding: '8px 10px', fontSize: 14 }}
+        >
+          ← Volver
+        </Link>
       </div>
 
       {/* Cabecera */}
@@ -104,18 +113,28 @@ export default function PurchasesNew() {
             selectedId={supplierId}
             onChange={(txt) => setSupplierLabel(txt)}
             onSelect={(id, label) => { setSupplierId(id); setSupplierLabel(label ?? ''); }}
+            placeholder="Nombre / CUIT…"
           />
           {supplierId && <div style={{ marginTop: 6, fontSize: 12, color: '#64748b' }}>Seleccionado: #{supplierId}</div>}
         </div>
 
         <div>
           <label style={{ fontSize: 12, color: '#475569', display: 'block', marginBottom: 4 }}>Fecha</label>
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '8px 10px', width: '100%' }} />
+          <input
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '8px 10px', width: '100%' }}
+          />
         </div>
 
         <div>
           <label style={{ fontSize: 12, color: '#475569', display: 'block', marginBottom: 4 }}>Medio de pago</label>
-          <select value={pm} onChange={(e) => setPm(e.target.value)} style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '8px 10px', width: '100%' }}>
+          <select
+            value={pm}
+            onChange={(e) => setPm(e.target.value)}
+            style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '8px 10px', width: '100%' }}
+          >
             {PM_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
         </div>
@@ -123,14 +142,19 @@ export default function PurchasesNew() {
 
       {/* Ítems */}
       <div style={{ marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div style={{ fontSize: 14, fontWeight: 600, color: '#334155' }}>Ítems (insumos/productos)</div>
-        <button onClick={addItem} style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '6px 10px', background: '#fff' }}>+ Agregar ítem</button>
+        <div style={{ fontSize: 14, fontWeight: 600, color: '#334155' }}>Ítems</div>
+        <button
+          onClick={addItem}
+          style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '6px 10px', background: '#fff' }}
+        >
+          + Agregar ítem
+        </button>
       </div>
 
       <table style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid #e2e8f0', borderRadius: 8, overflow: 'hidden' }}>
         <thead style={{ background: '#f8fafc' }}>
           <tr>
-            <th style={{ textAlign: 'left',  padding: '10px 8px', fontSize: 12, color: '#334155' }}>Insumo/Producto</th>
+            <th style={{ textAlign: 'left',  padding: '10px 8px', fontSize: 12, color: '#334155' }}>Insumo / Producto</th>
             <th style={{ textAlign: 'right', padding: '10px 8px', fontSize: 12, color: '#334155' }}>Cantidad</th>
             <th style={{ textAlign: 'right', padding: '10px 8px', fontSize: 12, color: '#334155' }}>Precio</th>
             <th style={{ textAlign: 'right', padding: '10px 8px', fontSize: 12, color: '#334155' }}>Importe</th>
@@ -149,10 +173,11 @@ export default function PurchasesNew() {
                     onChange={(txt) => updateItem(it.key, { productLabel: txt })}
                     onSelect={(id, label, price) => {
                       const patch = { productId: id, productLabel: label ?? '' };
+                      // si no hay precio cargado, autocompleta con el de lista si viene
                       if (!number(it.price) && number(price) > 0) patch.price = Number(price);
                       updateItem(it.key, patch);
                     }}
-                    placeholder="Buscar insumo/producto…"
+                    placeholder="SKU / nombre…"
                   />
                 </td>
                 <td style={{ padding: '8px 8px', textAlign: 'right' }}>
@@ -173,7 +198,12 @@ export default function PurchasesNew() {
                 </td>
                 <td style={{ padding: '8px 8px', textAlign: 'right', whiteSpace: 'nowrap' }}>{fmtCurrency(line)}</td>
                 <td style={{ padding: '8px 8px' }}>
-                  <button onClick={() => removeItem(it.key)} style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '6px 10px', background: '#fff' }}>Eliminar</button>
+                  <button
+                    onClick={() => removeItem(it.key)}
+                    style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '6px 10px', background: '#fff' }}
+                  >
+                    Eliminar
+                  </button>
                 </td>
               </tr>
             );
@@ -201,11 +231,20 @@ export default function PurchasesNew() {
           <button
             onClick={onSubmit}
             disabled={!canSave}
-            style={{ marginTop: 12, width: '100%', padding: '10px 12px', border: '1px solid #cbd5e1', borderRadius: 10, background: canSave ? '#ffffff' : '#f1f5f9', cursor: canSave ? 'pointer' : 'not-allowed', fontWeight: 600 }}
+            style={{
+              marginTop: 12, width: '100%', padding: '10px 12px',
+              border: '1px solid #cbd5e1', borderRadius: 10,
+              background: canSave ? '#ffffff' : '#f1f5f9',
+              cursor: canSave ? 'pointer' : 'not-allowed', fontWeight: 600
+            }}
           >
             Guardar
           </button>
-          {!canSave && <div style={{ marginTop: 8, color: '#64748b', fontSize: 12 }}>Completá proveedor y al menos un ítem con cantidad &gt; 0.</div>}
+          {!canSave && (
+            <div style={{ marginTop: 8, color: '#64748b', fontSize: 12 }}>
+              Completá proveedor y al menos un ítem con cantidad &gt; 0.
+            </div>
+          )}
         </div>
       </div>
     </div>
