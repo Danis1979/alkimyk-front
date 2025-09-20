@@ -1,154 +1,111 @@
 // src/services/clients.service.js
 import { http } from '../lib/http';
 
-// === Local fallback (si el backend 404) ===
-const LS_KEY = 'clients.local';
-
-function loadLocal() {
-  try { return JSON.parse(localStorage.getItem(LS_KEY) || '[]'); } catch { return []; }
-}
-function saveLocal(arr) { localStorage.setItem(LS_KEY, JSON.stringify(arr)); }
-
-function norm(c) {
-  // normalizamos distintas variantes de campos
+// Normaliza distintas formas del backend al modelo del front
+function normClient(c = {}) {
   return {
-    id: c.id ?? c.clientId ?? c._id ?? null,
-    nombre: c.nombre ?? c.name ?? c.razonSocial ?? '',
-    cuit: c.cuit ?? c.taxId ?? '',
+    id: c.id,
+    nombre: c.nombre ?? c.name ?? '',
+    cuit: c.cuit ?? c.taxId ?? c.cuil ?? '',
     direccion: c.direccion ?? c.address ?? '',
     condicionesPago: c.condicionesPago ?? c.paymentTerms ?? '',
     listasPrecio: c.listasPrecio ?? c.priceLists ?? '',
     email: c.email ?? '',
     telefono: c.telefono ?? c.phone ?? '',
-    activo: c.activo ?? c.active ?? true,
-    _raw: c,
+    raw: c,
   };
 }
 
-// Intenta varios endpoints comunes; si 404, lanza
-async function getJSON(url) {
-  const { data } = await http.get(url);
-  return data;
+// Extrae lista de distintas formas {items}|{data}|{results}|array
+function pickList(x) {
+  if (Array.isArray(x?.items)) return x.items;
+  if (Array.isArray(x?.data)) return x.data;
+  if (Array.isArray(x?.results)) return x.results;
+  if (Array.isArray(x)) return x;
+  return [];
 }
 
-// Lista con paginado/búsqueda
-export async function listClients({ page = 1, limit = 20, q = '', sort = 'nombre' } = {}) {
-  // 1) Backend ideal
-  try {
-    // Probar formas típicas
-    const qs = new URLSearchParams({ page: String(page), limit: String(limit) });
-    if (q) qs.set('q', q);
-    if (sort) qs.set('sort', sort);
+export async function searchClients({ page = 1, limit = 20, sort = 'nombre', q } = {}) {
+  const qs = new URLSearchParams({ page: String(page), limit: String(limit) });
+  if (sort) qs.set('sort', sort);
+  if (q) qs.set('q', q);
 
-    let data;
-    try { data = await getJSON(`/clients/search?${qs.toString()}`); }
-    catch (e1) {
-      try { data = await getJSON(`/clients?${qs.toString()}`); }
-      catch (e2) { throw e2; }
+  // Probamos varias rutas típicas sin romper si alguna 404
+  const tryUrls = [
+    `/clients/search?${qs.toString()}`,
+    `/clients?${qs.toString()}`,
+    `/clients/list?${qs.toString()}`,
+  ];
+
+  for (const url of tryUrls) {
+    try {
+      const { data } = await http.get(url);
+      const arr = pickList(data);
+      return {
+        items: arr.map(normClient),
+        page: data?.page ?? page,
+        pages:
+          data?.pages ??
+          (typeof data?.total === 'number' ? Math.max(1, Math.ceil(data.total / limit)) : undefined),
+        total: data?.total,
+      };
+    } catch (_) {
+      // seguimos probando siguiente forma
     }
-
-    const items = Array.isArray(data?.items) ? data.items : (Array.isArray(data) ? data : []);
-    const total = data?.total ?? items.length;
-    const pages = data?.pages ?? Math.max(1, Math.ceil(total / limit));
-    return { items: items.map(norm), total, page: data?.page ?? page, pages };
-  } catch {
-    // 2) Fallback LOCAL (sin backend)
-    const all = loadLocal();
-    const f = q
-      ? all.filter(c =>
-          (c.nombre || '').toLowerCase().includes(q.toLowerCase()) ||
-          (c.cuit || '').toLowerCase().includes(q.toLowerCase()) ||
-          (c.email || '').toLowerCase().includes(q.toLowerCase())
-        )
-      : all;
-    // orden simple por nombre
-    f.sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''));
-    const start = (page - 1) * limit;
-    const items = f.slice(start, start + limit);
-    const total = f.length;
-    const pages = Math.max(1, Math.ceil(total / limit));
-    return { items, total, page, pages };
   }
-}
-
-export async function getClientById(id) {
-  // Backend
-  try {
-    const data = await getJSON(`/clients/${id}`);
-    return norm(data);
-  } catch {
-    // Local
-    const all = loadLocal();
-    const found = all.find(c => String(c.id) === String(id));
-    return found ?? null;
-  }
+  // Fallback vacío para que el UI no crashee
+  return { items: [], page, pages: 1, total: 0 };
 }
 
 export async function createClient(payload) {
   const body = {
-    nombre: payload.nombre?.trim() || '',
-    cuit: payload.cuit?.trim() || '',
-    direccion: payload.direccion?.trim() || '',
-    condicionesPago: payload.condicionesPago?.trim() || '',
-    listasPrecio: payload.listasPrecio?.trim() || '',
-    email: payload.email?.trim() || '',
-    telefono: payload.telefono?.trim() || '',
-    activo: payload.activo ?? true,
+    ...payload,
+    nombre: payload?.nombre ?? payload?.name ?? '',
+    // compatibilidad si el backend espera "name"
+    name: payload?.nombre ?? payload?.name ?? '',
   };
-
-  // Backend
-  try {
-    const { data } = await http.post('/clients', body);
-    return norm(data);
-  } catch {
-    // Local
-    const all = loadLocal();
-    const id = Date.now(); // id temporal
-    const obj = norm({ id, ...body });
-    all.push(obj);
-    saveLocal(all);
-    return obj;
+  const attempts = [
+    () => http.post('/clients', body),
+    () => http.post('/clients/new', body),
+  ];
+  for (const call of attempts) {
+    try {
+      const { data } = await call();
+      return data;
+    } catch (_) {}
   }
+  throw new Error('createClient failed');
 }
 
 export async function updateClient(id, payload) {
   const body = {
-    nombre: payload.nombre?.trim() || '',
-    cuit: payload.cuit?.trim() || '',
-    direccion: payload.direccion?.trim() || '',
-    condicionesPago: payload.condicionesPago?.trim() || '',
-    listasPrecio: payload.listasPrecio?.trim() || '',
-    email: payload.email?.trim() || '',
-    telefono: payload.telefono?.trim() || '',
-    activo: payload.activo ?? true,
+    ...payload,
+    nombre: payload?.nombre ?? payload?.name ?? '',
+    name: payload?.nombre ?? payload?.name ?? '',
   };
-
-  // Backend
-  try {
-    const { data } = await http.put(`/clients/${id}`, body);
-    return norm(data);
-  } catch {
-    // Local
-    const all = loadLocal();
-    const idx = all.findIndex(c => String(c.id) === String(id));
-    if (idx >= 0) {
-      all[idx] = { ...all[idx], ...body };
-      saveLocal(all);
-      return all[idx];
-    }
-    return null;
+  const attempts = [
+    () => http.patch(`/clients/${id}`, body),
+    () => http.put(`/clients/${id}`, body),
+  ];
+  for (const call of attempts) {
+    try {
+      const { data } = await call();
+      return data;
+    } catch (_) {}
   }
+  throw new Error('updateClient failed');
 }
 
-export async function removeClient(id) {
-  // Backend
-  try {
-    await http.delete(`/clients/${id}`);
-    return true;
-  } catch {
-    // Local
-    const all = loadLocal().filter(c => String(c.id) !== String(id));
-    saveLocal(all);
-    return true;
+export async function deleteClient(id) {
+  const attempts = [
+    () => http.delete(`/clients/${id}`),
+    () => http.post(`/clients/${id}/delete`),
+  ];
+  for (const call of attempts) {
+    try {
+      const { data } = await call();
+      return data ?? true;
+    } catch (_) {}
   }
+  throw new Error('deleteClient failed');
 }

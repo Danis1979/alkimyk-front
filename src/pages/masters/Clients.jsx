@@ -1,22 +1,33 @@
 // src/pages/masters/Clients.jsx
 import { useMemo, useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams, Link } from 'react-router-dom';
-import { listClients, createClient, updateClient, removeClient } from '../../services/clients.service';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  searchClients,
+  createClient,
+  updateClient,
+  deleteClient,
+} from '../../services/clients.service';
 
 function Label({ children }) {
-  return <span style={{ fontSize: 12, color: '#475569', display: 'block', marginBottom: 4 }}>{children}</span>;
+  return (
+    <span style={{ fontSize: 12, color: '#475569', display: 'block', marginBottom: 4 }}>
+      {children}
+    </span>
+  );
 }
 
-function Text({ value, onChange, placeholder, style, ...rest }) {
+function TextInput(props) {
   return (
     <input
-      type="text"
-      value={value}
-      placeholder={placeholder}
-      onChange={(e) => onChange(e.target.value)}
-      style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '8px 10px', width: '100%', ...style }}
-      {...rest}
+      {...props}
+      style={{
+        border: '1px solid #cbd5e1',
+        borderRadius: 8,
+        padding: '8px 10px',
+        width: '100%',
+        ...(props.style || {}),
+      }}
     />
   );
 }
@@ -25,81 +36,167 @@ export default function Clients() {
   const [sp, setSp] = useSearchParams();
   const qc = useQueryClient();
 
+  // URL state
   const page = Math.max(1, parseInt(sp.get('page') || '1', 10));
   const limit = [10, 20, 50].includes(parseInt(sp.get('limit') || '20', 10))
     ? parseInt(sp.get('limit') || '20', 10)
     : 20;
+  const sort = sp.get('sort') || 'nombre'; // nombre|-nombre|id|-id
   const q = sp.get('q') || '';
 
   const setParam = (k, v, { resetPage = false } = {}) => {
     const next = new URLSearchParams(sp);
-    if (v === undefined || v === null || v === '') next.delete(k); else next.set(k, String(v));
+    if (v === undefined || v === null || v === '') next.delete(k);
+    else next.set(k, String(v));
     if (resetPage) next.set('page', '1');
     setSp(next, { replace: true });
   };
 
-  const queryKey = useMemo(() => ['clients.list', { page, limit, q }], [page, limit, q]);
+  const queryKey = useMemo(
+    () => ['clients.search', { page, limit, sort, q }],
+    [page, limit, sort, q],
+  );
 
   const { data, isLoading, isError } = useQuery({
     queryKey,
-    queryFn: () => listClients({ page, limit, q }),
+    queryFn: () => searchClients({ page, limit, sort, q }),
     keepPreviousData: true,
   });
 
   const items = data?.items ?? [];
   const hasNext = items.length === limit;
 
-  // Formulario (alta/edición)
-  const empty = { id: null, nombre: '', cuit: '', direccion: '', condicionesPago: '', listasPrecio: '', email: '', telefono: '', activo: true };
-  const [form, setForm] = useState(empty);
-  const [saving, setSaving] = useState(false);
-  const editing = !!form.id;
+  // Crear
+  const [showCreate, setShowCreate] = useState(false);
+  const [createForm, setCreateForm] = useState({
+    nombre: '',
+    cuit: '',
+    direccion: '',
+    condicionesPago: '',
+    listasPrecio: '',
+    email: '',
+    telefono: '',
+  });
+  const canSaveCreate = createForm.nombre.trim().length > 0;
 
-  const startNew = () => setForm(empty);
-  const startEdit = (row) => setForm({ ...empty, ...row });
-
-  const doSave = async () => {
-    setSaving(true);
+  const onCreate = async () => {
+    const payload = {
+      ...createForm,
+      nombre: createForm.nombre.trim(),
+      name: createForm.nombre.trim(), // por compatibilidad
+    };
     try {
-      if (editing) await updateClient(form.id, form);
-      else await createClient(form);
-      await qc.invalidateQueries({ queryKey: ['clients.list'] });
-      setForm(empty);
-      alert('Cliente guardado.');
+      await createClient(payload);
+      setShowCreate(false);
+      setCreateForm({
+        nombre: '',
+        cuit: '',
+        direccion: '',
+        condicionesPago: '',
+        listasPrecio: '',
+        email: '',
+        telefono: '',
+      });
+      await qc.invalidateQueries({ queryKey: ['clients.search'] });
     } catch (e) {
-      console.warn('save client', e);
-      alert('No se pudo guardar el cliente.');
-    } finally {
-      setSaving(false);
+      alert('No se pudo crear el cliente (¿endpoint listo?).');
     }
   };
 
-  const doDelete = async (row) => {
-    if (!confirm(`¿Eliminar cliente "${row.nombre}"?`)) return;
+  // Editar
+  const [editId, setEditId] = useState(null);
+  const [editForm, setEditForm] = useState({});
+  const startEdit = (row) => {
+    setEditId(row.id);
+    setEditForm({
+      nombre: row.nombre ?? row.name ?? '',
+      cuit: row.cuit ?? '',
+      direccion: row.direccion ?? row.address ?? '',
+      condicionesPago: row.condicionesPago ?? '',
+      listasPrecio: row.listasPrecio ?? '',
+      email: row.email ?? '',
+      telefono: row.telefono ?? '',
+    });
+  };
+  const cancelEdit = () => {
+    setEditId(null);
+    setEditForm({});
+  };
+  const onUpdate = async (id) => {
+    const payload = {
+      ...editForm,
+      nombre: (editForm.nombre || '').trim(),
+      name: (editForm.nombre || '').trim(), // compat
+    };
     try {
-      await removeClient(row.id);
-      await qc.invalidateQueries({ queryKey: ['clients.list'] });
-      alert('Cliente eliminado.');
+      await updateClient(id, payload);
+      setEditId(null);
+      setEditForm({});
+      await qc.invalidateQueries({ queryKey: ['clients.search'] });
     } catch (e) {
-      console.warn('delete client', e);
-      alert('No se pudo eliminar.');
+      alert('No se pudo actualizar (¿endpoint listo?).');
+    }
+  };
+
+  // Eliminar
+  const onDelete = async (id) => {
+    if (!confirm('¿Eliminar cliente? Esta acción no se puede deshacer.')) return;
+    try {
+      await deleteClient(id);
+      await qc.invalidateQueries({ queryKey: ['clients.search'] });
+    } catch (e) {
+      alert('No se pudo eliminar (¿endpoint listo?).');
     }
   };
 
   return (
     <div style={{ maxWidth: 1100, margin: '0 auto' }}>
+      {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
         <h1 style={{ fontSize: 20, fontWeight: 600, margin: 0, flex: 1 }}>Clientes</h1>
-        <Link to="/masters" style={{ textDecoration: 'none', border: '1px solid #cbd5e1', borderRadius: 8, padding: '8px 10px' }}>
-          ← Volver a Maestros
-        </Link>
+        <button
+          onClick={() => setShowCreate((s) => !s)}
+          style={{
+            border: '1px solid #cbd5e1',
+            borderRadius: 8,
+            padding: '8px 10px',
+            background: '#fff',
+          }}
+        >
+          {showCreate ? '× Cancelar' : '+ Nuevo cliente'}
+        </button>
       </div>
 
-      {/* Filtros */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 160px 160px', gap: 12, alignItems: 'end', marginBottom: 12 }}>
+      {/* Barra de filtros */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '1.2fr 180px 180px 140px',
+          gap: 12,
+          alignItems: 'end',
+          marginBottom: 12,
+        }}
+      >
         <div>
-          <Label>Buscar (nombre / CUIT / email)</Label>
-          <Text value={q} onChange={(v) => setParam('q', v, { resetPage: true })} placeholder="Ej: Green" />
+          <Label>Buscar (nombre / CUIT)</Label>
+          <TextInput
+            value={q}
+            placeholder="Ej: Green & Co o 30-..."
+            onChange={(e) => setParam('q', e.target.value, { resetPage: true })}
+          />
+        </div>
+        <div>
+          <Label>Orden</Label>
+          <select
+            value={sort}
+            onChange={(e) => setParam('sort', e.target.value, { resetPage: true })}
+            style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '8px 10px', width: '100%' }}
+          >
+            <option value="nombre">Nombre asc.</option>
+            <option value="-nombre">Nombre desc.</option>
+            <option value="id">ID asc.</option>
+            <option value="-id">ID desc.</option>
+          </select>
         </div>
         <div>
           <Label>Tamaño página</Label>
@@ -116,13 +213,137 @@ export default function Clients() {
         <div>
           <Label>Acciones</Label>
           <button
-            onClick={() => { const next = new URLSearchParams(); next.set('page', '1'); next.set('limit', String(limit)); setSp(next, { replace: true }); }}
-            style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '8px 10px', background: '#fff', width: '100%' }}
+            onClick={() => {
+              const next = new URLSearchParams();
+              next.set('page', '1');
+              next.set('limit', String(limit));
+              next.set('sort', 'nombre');
+              setSp(next, { replace: true });
+            }}
+            style={{
+              border: '1px solid #cbd5e1',
+              borderRadius: 8,
+              padding: '8px 10px',
+              width: '100%',
+              background: '#fff',
+            }}
           >
             Limpiar filtros
           </button>
         </div>
       </div>
+
+      {/* Form de creación (toggle) */}
+      {showCreate && (
+        <div
+          style={{
+            border: '1px solid #e2e8f0',
+            borderRadius: 12,
+            padding: 12,
+            marginBottom: 12,
+            background: '#fff',
+          }}
+        >
+          <div style={{ fontWeight: 600, marginBottom: 10 }}>Nuevo cliente</div>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '1.2fr 1fr 1fr',
+              gap: 12,
+              alignItems: 'end',
+              marginBottom: 8,
+            }}
+          >
+            <div>
+              <Label>Nombre *</Label>
+              <TextInput
+                value={createForm.nombre}
+                onChange={(e) => setCreateForm((f) => ({ ...f, nombre: e.target.value }))}
+                placeholder="Razón social o fantasía"
+              />
+            </div>
+            <div>
+              <Label>CUIT</Label>
+              <TextInput
+                value={createForm.cuit}
+                onChange={(e) => setCreateForm((f) => ({ ...f, cuit: e.target.value }))}
+                placeholder="30-..."
+              />
+            </div>
+            <div>
+              <Label>Teléfono</Label>
+              <TextInput
+                value={createForm.telefono}
+                onChange={(e) => setCreateForm((f) => ({ ...f, telefono: e.target.value }))}
+              />
+            </div>
+            <div>
+              <Label>Email</Label>
+              <TextInput
+                value={createForm.email}
+                onChange={(e) => setCreateForm((f) => ({ ...f, email: e.target.value }))}
+                placeholder="facturacion@empresa.com"
+              />
+            </div>
+            <div>
+              <Label>Dirección</Label>
+              <TextInput
+                value={createForm.direccion}
+                onChange={(e) => setCreateForm((f) => ({ ...f, direccion: e.target.value }))}
+              />
+            </div>
+            <div>
+              <Label>Condiciones de pago</Label>
+              <TextInput
+                value={createForm.condicionesPago}
+                onChange={(e) => setCreateForm((f) => ({ ...f, condicionesPago: e.target.value }))}
+                placeholder="Contado / CC 30d / etc."
+              />
+            </div>
+            <div>
+              <Label>Listas de precio</Label>
+              <TextInput
+                value={createForm.listasPrecio}
+                onChange={(e) => setCreateForm((f) => ({ ...f, listasPrecio: e.target.value }))}
+                placeholder="General / Mayorista / ..."
+              />
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              onClick={onCreate}
+              disabled={!canSaveCreate}
+              style={{
+                border: '1px solid #cbd5e1',
+                borderRadius: 8,
+                padding: '8px 12px',
+                background: canSaveCreate ? '#fff' : '#f1f5f9',
+                cursor: canSaveCreate ? 'pointer' : 'not-allowed',
+                fontWeight: 600,
+              }}
+            >
+              Guardar
+            </button>
+            <button
+              onClick={() => {
+                setShowCreate(false);
+                setCreateForm({
+                  nombre: '',
+                  cuit: '',
+                  direccion: '',
+                  condicionesPago: '',
+                  listasPrecio: '',
+                  email: '',
+                  telefono: '',
+                });
+              }}
+              style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '8px 12px', background: '#fff' }}
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Estado */}
       {isError && <div style={{ color: '#b91c1c', marginBottom: 8 }}>Error cargando clientes.</div>}
@@ -130,37 +351,104 @@ export default function Clients() {
 
       {/* Tabla */}
       {!isLoading && (
-        <table style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid #e2e8f0', borderRadius: 8, overflow: 'hidden' }}>
+        <table
+          style={{
+            width: '100%',
+            borderCollapse: 'collapse',
+            border: '1px solid #e2e8f0',
+            borderRadius: 8,
+            overflow: 'hidden',
+            background: '#fff',
+          }}
+        >
           <thead style={{ background: '#f8fafc' }}>
             <tr>
-              <th style={{ textAlign: 'left', padding: '10px 8px', fontSize: 12, color: '#334155' }}>ID</th>
-              <th style={{ textAlign: 'left', padding: '10px 8px', fontSize: 12, color: '#334155' }}>Nombre</th>
-              <th style={{ textAlign: 'left', padding: '10px 8px', fontSize: 12, color: '#334155' }}>CUIT</th>
-              <th style={{ textAlign: 'left', padding: '10px 8px', fontSize: 12, color: '#334155' }}>Email</th>
-              <th style={{ textAlign: 'left', padding: '10px 8px', fontSize: 12, color: '#334155' }}>Teléfono</th>
-              <th style={{ textAlign: 'left', padding: '10px 8px', fontSize: 12, color: '#334155' }}>Acciones</th>
+              <th style={th}>ID</th>
+              <th style={th}>Nombre</th>
+              <th style={th}>CUIT</th>
+              <th style={th}>Email</th>
+              <th style={th}>Teléfono</th>
+              <th style={th}>Acciones</th>
             </tr>
           </thead>
           <tbody>
-            {items.map((c) => (
-              <tr key={c.id ?? `loc-${c.nombre}`} style={{ borderTop: '1px solid #e2e8f0' }}>
-                <td style={{ padding: '10px 8px' }}>{c.id ?? '—'}</td>
-                <td style={{ padding: '10px 8px' }}>{c.nombre}</td>
-                <td style={{ padding: '10px 8px' }}>{c.cuit || '—'}</td>
-                <td style={{ padding: '10px 8px' }}>{c.email || '—'}</td>
-                <td style={{ padding: '10px 8px' }}>{c.telefono || '—'}</td>
-                <td style={{ padding: '10px 8px', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  <button onClick={() => startEdit(c)} style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '6px 8px', background: '#fff' }}>
-                    Editar
-                  </button>
-                  <button onClick={() => doDelete(c)} style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '6px 8px', background: '#fff' }}>
-                    Eliminar
-                  </button>
+            {items.map((row) => {
+              const editing = editId === row.id;
+              if (editing) {
+                return (
+                  <tr key={row.id} style={{ borderTop: '1px solid #e2e8f0' }}>
+                    <td style={td}>#{row.id}</td>
+                    <td style={td}>
+                      <TextInput
+                        value={editForm.nombre}
+                        onChange={(e) => setEditForm((f) => ({ ...f, nombre: e.target.value }))}
+                      />
+                    </td>
+                    <td style={td}>
+                      <TextInput
+                        value={editForm.cuit}
+                        onChange={(e) => setEditForm((f) => ({ ...f, cuit: e.target.value }))}
+                      />
+                    </td>
+                    <td style={td}>
+                      <TextInput
+                        value={editForm.email}
+                        onChange={(e) => setEditForm((f) => ({ ...f, email: e.target.value }))}
+                      />
+                    </td>
+                    <td style={td}>
+                      <TextInput
+                        value={editForm.telefono}
+                        onChange={(e) => setEditForm((f) => ({ ...f, telefono: e.target.value }))}
+                      />
+                    </td>
+                    <td style={{ ...td, display: 'flex', gap: 8 }}>
+                      <button
+                        onClick={() => onUpdate(row.id)}
+                        style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '6px 10px', background: '#fff' }}
+                      >
+                        Guardar
+                      </button>
+                      <button
+                        onClick={cancelEdit}
+                        style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '6px 10px', background: '#fff' }}
+                      >
+                        Cancelar
+                      </button>
+                    </td>
+                  </tr>
+                );
+              }
+              return (
+                <tr key={row.id} style={{ borderTop: '1px solid #e2e8f0' }}>
+                  <td style={td}>#{row.id}</td>
+                  <td style={td}>{row.nombre ?? row.name ?? '—'}</td>
+                  <td style={td}>{row.cuit ?? '—'}</td>
+                  <td style={td}>{row.email ?? '—'}</td>
+                  <td style={td}>{row.telefono ?? '—'}</td>
+                  <td style={{ ...td, display: 'flex', gap: 8 }}>
+                    <button
+                      onClick={() => startEdit(row)}
+                      style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '6px 10px', background: '#fff' }}
+                    >
+                      Editar
+                    </button>
+                    <button
+                      onClick={() => onDelete(row.id)}
+                      style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '6px 10px', background: '#fff' }}
+                    >
+                      Eliminar
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+            {items.length === 0 && (
+              <tr>
+                <td colSpan={6} style={{ padding: 16, color: '#64748b' }}>
+                  Sin resultados.
                 </td>
               </tr>
-            ))}
-            {items.length === 0 && (
-              <tr><td colSpan={6} style={{ padding: 16, color: '#64748b' }}>Sin resultados.</td></tr>
             )}
           </tbody>
         </table>
@@ -168,108 +456,52 @@ export default function Clients() {
 
       {/* Paginación */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
-        <div style={{ fontSize: 12, color: '#475569' }}>
-          Página {page} · {items.length} de {limit}
-        </div>
+        <div style={{ fontSize: 12, color: '#475569' }}>Página {page} · {items.length} de {limit}</div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button
             onClick={() => setParam('page', String(page - 1))}
             disabled={page <= 1}
-            style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '8px 10px',
-                     background: page <= 1 ? '#f1f5f9' : '#fff', cursor: page <= 1 ? 'not-allowed' : 'pointer' }}
+            style={{
+              border: '1px solid #cbd5e1',
+              borderRadius: 8,
+              padding: '8px 10px',
+              background: page <= 1 ? '#f1f5f9' : '#fff',
+              cursor: page <= 1 ? 'not-allowed' : 'pointer',
+            }}
           >
             ← Anterior
           </button>
           <button
             onClick={() => setParam('page', String(page + 1))}
             disabled={!hasNext}
-            style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '8px 10px',
-                     background: !hasNext ? '#f1f5f9' : '#fff', cursor: !hasNext ? 'not-allowed' : 'pointer' }}
+            style={{
+              border: '1px solid #cbd5e1',
+              borderRadius: 8,
+              padding: '8px 10px',
+              background: !hasNext ? '#f1f5f9' : '#fff',
+              cursor: !hasNext ? 'not-allowed' : 'pointer',
+            }}
           >
             Siguiente →
           </button>
         </div>
       </div>
 
-      {/* Formulario alta/edición */}
-      <div style={{ marginTop: 16, border: '1px solid #e2e8f0', borderRadius: 12, padding: 12 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-          <div style={{ fontWeight: 600 }}>{editing ? `Editar cliente #${form.id}` : 'Nuevo cliente'}</div>
-          {editing ? (
-            <button onClick={startNew} style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '6px 8px', background: '#fff' }}>
-              Cancelar edición
-            </button>
-          ) : null}
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <div>
-            <Label>Nombre</Label>
-            <Text value={form.nombre} onChange={v => setForm(f => ({ ...f, nombre: v }))} placeholder="Razón social / nombre" />
-          </div>
-          <div>
-            <Label>CUIT</Label>
-            <Text value={form.cuit} onChange={v => setForm(f => ({ ...f, cuit: v }))} placeholder="CUIT" />
-          </div>
-          <div>
-            <Label>Email</Label>
-            <Text value={form.email} onChange={v => setForm(f => ({ ...f, email: v }))} placeholder="email@dominio.com" />
-          </div>
-          <div>
-            <Label>Teléfono</Label>
-            <Text value={form.telefono} onChange={v => setForm(f => ({ ...f, telefono: v }))} placeholder="+54 11 ..." />
-          </div>
-          <div style={{ gridColumn: '1 / -1' }}>
-            <Label>Dirección</Label>
-            <Text value={form.direccion} onChange={v => setForm(f => ({ ...f, direccion: v }))} placeholder="Calle 123, Ciudad" />
-          </div>
-          <div>
-            <Label>Condiciones de pago</Label>
-            <Text value={form.condicionesPago} onChange={v => setForm(f => ({ ...f, condicionesPago: v }))} placeholder="Contado / 15 días / 30 días" />
-          </div>
-          <div>
-            <Label>Listas de precios</Label>
-            <Text value={form.listasPrecio} onChange={v => setForm(f => ({ ...f, listasPrecio: v }))} placeholder="Lista A / B ..." />
-          </div>
-          <div>
-            <Label>Activo</Label>
-            <select
-              value={form.activo ? '1' : '0'}
-              onChange={(e) => setForm(f => ({ ...f, activo: e.target.value === '1' }))}
-              style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '8px 10px', width: '100%' }}
-            >
-              <option value="1">Sí</option>
-              <option value="0">No</option>
-            </select>
-          </div>
-        </div>
-
-        <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
-          <button
-            onClick={doSave}
-            disabled={saving || !form.nombre.trim()}
-            style={{
-              border: '1px solid #cbd5e1',
-              borderRadius: 8,
-              padding: '10px 12px',
-              background: saving || !form.nombre.trim() ? '#f1f5f9' : '#fff',
-              cursor: saving || !form.nombre.trim() ? 'not-allowed' : 'pointer',
-              fontWeight: 600,
-            }}
-          >
-            {saving ? 'Guardando…' : 'Guardar'}
-          </button>
-          {!editing && (
-            <button
-              onClick={() => setForm(empty)}
-              disabled={saving}
-              style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '10px 12px', background: '#fff' }}
-            >
-              Limpiar
-            </button>
-          )}
-        </div>
+      {/* Volver a Maestros */}
+      <div style={{ marginTop: 12 }}>
+        <Link to="/masters" style={{ textDecoration: 'none', border: '1px solid #cbd5e1', borderRadius: 8, padding: '8px 10px' }}>
+          ← Volver a Maestros
+        </Link>
       </div>
     </div>
   );
 }
+
+const th = {
+  textAlign: 'left',
+  padding: '10px 8px',
+  fontWeight: 600,
+  fontSize: 12,
+  color: '#334155',
+};
+const td = { padding: '10px 8px' };
