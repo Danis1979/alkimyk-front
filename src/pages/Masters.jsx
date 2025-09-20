@@ -5,6 +5,8 @@ import { Link, Routes, Route } from 'react-router-dom';
 import Products from './masters/Products.jsx';
 import Clients from './masters/Clients.jsx';
 import Suppliers from './masters/Suppliers.jsx';
+import Uom from './masters/Uom.jsx';         // ✅ nuevo
+import Prices from './masters/Prices.jsx';   // ✅ nuevo
 
 function Card({ to, title, subtitle }) {
   return (
@@ -47,29 +49,6 @@ function Home() {
   );
 }
 
-function Stub({ title }) {
-  return (
-    <div style={{ maxWidth: 900 }}>
-      <h1 style={{ fontSize: 20, fontWeight: 600, margin: 0, marginBottom: 8 }}>{title}</h1>
-      <p style={{ color: '#64748b', marginBottom: 12 }}>
-        Página en construcción. Acá va el ABM completo según el modelo.
-      </p>
-      <Link
-        to="/masters"
-        style={{
-          textDecoration: 'none',
-          border: '1px solid #cbd5e1',
-          borderRadius: 8,
-          padding: '8px 10px',
-          display: 'inline-block',
-        }}
-      >
-        ← Volver a Maestros
-      </Link>
-    </div>
-  );
-}
-
 export default function Masters() {
   return (
     <div style={{ maxWidth: 980, margin: '0 auto' }}>
@@ -79,9 +58,8 @@ export default function Masters() {
         <Route path="products"  element={<Products />} />
         <Route path="clients"   element={<Clients />} />
         <Route path="suppliers" element={<Suppliers />} />
-        {/* Stubs por ahora */}
-        <Route path="uom"       element={<Stub title="Unidades de medida" />} />
-        <Route path="prices"    element={<Stub title="Listas de precios" />} />
+        <Route path="uom"       element={<Uom />} />        {/* ✅ ahora ABM real */}
+        <Route path="prices"    element={<Prices />} />     {/* ✅ ahora ABM real */}
         <Route path="*" element={<Home />} />
       </Routes>
     </div>
