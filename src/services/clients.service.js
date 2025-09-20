@@ -1,4 +1,7 @@
+// src/services/clients.service.js
 import { http } from '../lib/http';
+
+// --- Normalizadores ---------------------------------------------------------
 
 // Normaliza "listasPrecio" en un array de {id, name}
 function normLists(v) {
@@ -11,7 +14,10 @@ function normLists(v) {
     });
   }
   if (typeof v === 'string') {
-    return v.split(',').map(s => ({ id: null, name: s.trim() })).filter(x => x.name);
+    return v
+      .split(',')
+      .map(s => ({ id: null, name: s.trim() }))
+      .filter(x => x.name);
   }
   return [];
 }
@@ -30,8 +36,11 @@ function normClient(x) {
   };
 }
 
+// --- Endpoints base tolerantes (es/pt/en) -----------------------------------
+
 const BASES = ['/clients', '/customers', '/clientes'];
 
+// GET con prueba de múltiples bases
 async function tryGet(path) {
   let lastErr;
   for (const b of BASES) {
@@ -43,6 +52,7 @@ async function tryGet(path) {
   return { ok: false, err: lastErr };
 }
 
+// POST con prueba de múltiples bases
 async function tryPost(path, payload) {
   let lastErr;
   for (const b of BASES) {
@@ -54,6 +64,7 @@ async function tryPost(path, payload) {
   return { ok: false, err: lastErr };
 }
 
+// PUT con prueba de múltiples bases
 async function tryPut(id, payload) {
   let lastErr;
   for (const b of BASES) {
@@ -65,6 +76,7 @@ async function tryPut(id, payload) {
   return { ok: false, err: lastErr };
 }
 
+// DELETE con prueba de múltiples bases
 async function tryDelete(id) {
   let lastErr;
   for (const b of BASES) {
@@ -76,12 +88,14 @@ async function tryDelete(id) {
   return { ok: false, err: lastErr };
 }
 
+// --- Búsqueda / listado -----------------------------------------------------
+
 export async function searchClients({ page = 1, limit = 20, q = '', sort } = {}) {
   const qs = new URLSearchParams({ page: String(page), limit: String(limit) });
   if (q) qs.set('q', q);
   if (sort) qs.set('sort', sort);
 
-  // 1) /search
+  // 1) Preferimos /search
   let r = await tryGet(`/search?${qs.toString()}`);
   if (r.ok) {
     const arr = Array.isArray(r.data?.items) ? r.data.items : Array.isArray(r.data) ? r.data : [];
@@ -94,7 +108,7 @@ export async function searchClients({ page = 1, limit = 20, q = '', sort } = {})
     };
   }
 
-  // 2) listado plano
+  // 2) Fallback a listado plano
   r = await tryGet('');
   if (r.ok) {
     const arr = Array.isArray(r.data?.items) ? r.data.items : Array.isArray(r.data) ? r.data : [];
@@ -111,6 +125,8 @@ export async function searchClients({ page = 1, limit = 20, q = '', sort } = {})
 
   return { items: [], page, total: 0, pages: 1, _base: null };
 }
+
+// --- CRUD -------------------------------------------------------------------
 
 export async function createClient(payload) {
   const body = {
@@ -147,4 +163,62 @@ export async function deleteClient(id) {
   const r = await tryDelete(id);
   if (!r.ok) throw r.err || new Error('No se pudo eliminar cliente');
   return r.data;
+}
+
+// --- Extras para integración con Ventas (SalesNew) --------------------------
+
+// Trae un cliente por ID (intenta varias bases) y lo normaliza
+export async function fetchClientById(id) {
+  if (id == null) return null;
+  const r = await tryGet(`/${id}`);
+  if (!r.ok || !r.data) return null;
+  // Algunos backends devuelven {id,...}, otros {data:{...}}
+  const obj = (r.data && typeof r.data === 'object' && !Array.isArray(r.data) && r.data.id != null)
+    ? r.data
+    : r.data?.data ?? r.data;
+  return normClient(obj);
+}
+
+// Deduce la lista de precios del cliente (acepta normalizado o crudo)
+export function deriveClientPriceList(cli) {
+  if (!cli) return null;
+
+  // Preferir campos explícitos en crudo si existen
+  const raw = cli.raw ?? cli;
+
+  const idRaw =
+    raw.priceListId ??
+    raw.listaPrecioId ??
+    raw.listaId ??
+    null;
+
+  const labelRaw =
+    raw.priceList?.name ??
+    raw.listaPrecio?.nombre ??
+    raw.listaPrecio?.name ??
+    raw.listaPrecio ??
+    raw.priceList ??
+    null;
+
+  if (idRaw || labelRaw) {
+    return { id: idRaw ?? null, label: labelRaw ?? '' };
+  }
+
+  // Sino, usar normalizado
+  const listas = Array.isArray(cli.listasPrecio) ? cli.listasPrecio : [];
+  if (listas.length) {
+    // Si alguna viene marcada como activa en el crudo, usar esa
+    const arrRaw = raw.listasPrecio || raw.priceLists || raw.listas || [];
+    if (Array.isArray(arrRaw) && arrRaw.length) {
+      const active = arrRaw.find(x => x?.activa);
+      if (active) {
+        return { id: active.id ?? null, label: active.nombre ?? active.name ?? '' };
+      }
+    }
+    // Fallback: primera
+    const first = listas[0];
+    return { id: first.id ?? null, label: first.name ?? '' };
+  }
+
+  return null;
 }
