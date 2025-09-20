@@ -1,7 +1,7 @@
 // src/services/purchases.service.js
 import { http } from '../lib/http';
 
-// Normaliza filas (nombres de campos variables)
+// Normaliza filas de listados
 function normPurchase(r) {
   return {
     id: r.id,
@@ -12,6 +12,34 @@ function normPurchase(r) {
   };
 }
 
+// Normaliza un detalle (header + items)
+function normPurchaseDetail(x) {
+  const header = {
+    id: x.id,
+    fecha: x.fecha ?? x.date ?? null,
+    supplier: x.supplier ?? x.proveedor ?? x.supplierName ?? '',
+    pm: x.pm ?? x.medioPago ?? '',
+    estado: x.estado ?? x.status ?? '',
+    subtotal: x.subtotal ?? x.total ?? 0,
+    iva: x.iva ?? 0,
+    total: x.total ?? x.subtotal ?? 0,
+  };
+  const items = Array.isArray(x.items)
+    ? x.items.map((i) => {
+        const qty = i.qty ?? i.cantidad ?? 0;
+        const price = i.price ?? i.precio ?? 0;
+        return {
+          productId: i.productId ?? i.insumoId ?? null,
+          product: i.product ?? i.insumo ?? i.name ?? '',
+          qty,
+          price,
+          lineTotal: qty * price,
+        };
+      })
+    : [];
+  return { ...header, items, raw: x };
+}
+
 export async function searchPurchases({ page = 1, limit = 20, sort = '-fecha', from, to, q } = {}) {
   const qs = new URLSearchParams({ page: String(page), limit: String(limit) });
   if (sort) qs.set('sort', sort);
@@ -19,7 +47,6 @@ export async function searchPurchases({ page = 1, limit = 20, sort = '-fecha', f
   if (to)   qs.set('to', to);
   if (q)    qs.set('q', q);
 
-  // Backend final esperado
   try {
     const { data } = await http.get(`/purchases/search?${qs.toString()}`);
     const items = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
@@ -30,7 +57,6 @@ export async function searchPurchases({ page = 1, limit = 20, sort = '-fecha', f
       total: data?.total,
     };
   } catch {
-    // Fallback si expone array plano
     try {
       const { data } = await http.get(`/purchases?${qs.toString()}`);
       const items = Array.isArray(data) ? data : [];
@@ -39,6 +65,17 @@ export async function searchPurchases({ page = 1, limit = 20, sort = '-fecha', f
       return { items: [], page, pages: undefined, total: undefined };
     }
   }
+}
+
+export async function fetchPurchaseById(id) {
+  const urls = [`/purchases/${id}/full`, `/purchases/${id}`];
+  for (const u of urls) {
+    try {
+      const { data } = await http.get(u);
+      if (data) return normPurchaseDetail(data);
+    } catch (_) {}
+  }
+  return { id, fecha: null, supplier: '', pm: '', estado: '', items: [], subtotal: 0, iva: 0, total: 0 };
 }
 
 export async function createPurchase(payload) {
