@@ -3,81 +3,9 @@ import { useMemo, useState } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { searchUom, createUom, updateUom, deleteUom } from '../../services/uom.service';
-import normalizeList from '../../lib/normalizeList';
 
 function Label({ children }) {
   return <span style={{ fontSize: 12, color: '#475569', display: 'block', marginBottom: 4 }}>{children}</span>;
-}
-
-function RowForm({ initial, onCancel, onSaved }) {
-  const [code, setCode] = useState(initial?.code ?? '');
-  const [name, setName] = useState(initial?.name ?? '');
-  const [active, setActive] = useState(initial?.active ?? true);
-  const isEdit = !!initial?.id;
-
-  const canSave = code.trim().length > 0 && name.trim().length > 0;
-
-  const onSubmit = async () => {
-    const payload = { code: code.trim(), name: name.trim(), active: !!active };
-    try {
-      if (isEdit) await updateUom(initial.id, payload);
-      else await createUom(payload);
-      onSaved?.();
-    } catch (e) {
-      alert(e?.message || 'No se pudo guardar');
-    }
-  };
-
-  return (
-    <tr style={{ borderTop: '1px solid #e2e8f0', background: '#fcfcfd' }}>
-      <td style={{ padding: '8px' }}>{isEdit ? `#${initial.id}` : '—'}</td>
-      <td style={{ padding: '8px' }}>
-        <input
-          value={code}
-          onChange={(e) => setCode(e.target.value)}
-          placeholder="kg / un / caja…"
-          style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '6px 8px', width: '100%' }}
-        />
-      </td>
-      <td style={{ padding: '8px' }}>
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Kilos / Unidad / Caja…"
-          style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '6px 8px', width: '100%' }}
-        />
-      </td>
-      <td style={{ padding: '8px' }}>
-        <label style={{ fontSize: 13, color: '#334155' }}>
-          <input
-            type="checkbox"
-            checked={!!active}
-            onChange={(e) => setActive(e.target.checked)}
-            style={{ marginRight: 6 }}
-          />
-          Activo
-        </label>
-      </td>
-      <td style={{ padding: '8px', display: 'flex', gap: 8 }}>
-        <button
-          onClick={onSubmit}
-          disabled={!canSave}
-          style={{
-            border: '1px solid #cbd5e1', borderRadius: 8, padding: '6px 10px',
-            background: canSave ? '#fff' : '#f1f5f9', cursor: canSave ? 'pointer' : 'not-allowed'
-          }}
-        >
-          Guardar
-        </button>
-        <button
-          onClick={onCancel}
-          style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '6px 10px', background: '#fff' }}
-        >
-          Cancelar
-        </button>
-      </td>
-    </tr>
-  );
 }
 
 export default function Uom() {
@@ -85,12 +13,9 @@ export default function Uom() {
   const qc = useQueryClient();
 
   const page  = Math.max(1, parseInt(sp.get('page')  || '1', 10));
-  const limit = [10, 20, 50].includes(parseInt(sp.get('limit') || '20', 10))
-    ? parseInt(sp.get('limit') || '20', 10) : 20;
-  const sort  = sp.get('sort') || 'code';
+  const limit = [10, 20, 50].includes(parseInt(sp.get('limit') || '20', 10)) ? parseInt(sp.get('limit') || '20', 10) : 20;
   const q     = sp.get('q') || '';
-
-  const queryKey = useMemo(() => ['uom.search', { page, limit, sort, q }], [page, limit, sort, q]);
+  const sort  = sp.get('sort') || 'code';
 
   const setParam = (k, v, { resetPage = false } = {}) => {
     const next = new URLSearchParams(sp);
@@ -99,63 +24,71 @@ export default function Uom() {
     setSp(next, { replace: true });
   };
 
+  const queryKey = useMemo(() => ['uom.search', { page, limit, q, sort }], [page, limit, q, sort]);
+
   const { data, isLoading, isError } = useQuery({
     queryKey,
-    queryFn: () => searchUom({ page, limit, sort, q }),
+    queryFn: () => searchUom({ page, limit, q, sort }),
     keepPreviousData: true,
   });
 
-  const items = normalizeList(data?.items ?? []);
-  const hasNext = items.length === limit;
+  const items = data?.items ?? [];
+  const hasNext = items.length === limit; // heurística
+  const [showForm, setShowForm] = useState(false);
+  const [editRow, setEditRow]   = useState(null);
 
-  const [creating, setCreating] = useState(false);
-  const [editingId, setEditingId] = useState(null);
+  const [form, setForm] = useState({ code: '', name: '', activo: true });
 
-  const onSaved = async () => {
-    setCreating(false);
-    setEditingId(null);
-    await qc.invalidateQueries({ queryKey: ['uom.search'] });
+  const startNew = () => {
+    setEditRow(null);
+    setForm({ code: '', name: '', activo: true });
+    setShowForm(true);
+  };
+  const startEdit = (row) => {
+    setEditRow(row);
+    setForm({ code: row.code || '', name: row.name || '', activo: !!row.activo });
+    setShowForm(true);
   };
 
-  const onDelete = async (id) => {
-    if (!confirm('¿Eliminar la UoM?')) return;
+  const onSubmit = async () => {
     try {
-      await deleteUom(id);
+      if (editRow) await updateUom(editRow.id, form);
+      else         await createUom(form);
+      setShowForm(false);
       await qc.invalidateQueries({ queryKey: ['uom.search'] });
     } catch (e) {
-      alert(e?.message || 'No se pudo eliminar');
+      alert((e && e.message) || 'No se pudo guardar UoM');
+    }
+  };
+
+  const onDelete = async (row) => {
+    if (!window.confirm(`Eliminar UoM "${row.code} - ${row.name}"?`)) return;
+    try {
+      await deleteUom(row.id);
+      await qc.invalidateQueries({ queryKey: ['uom.search'] });
+    } catch (e) {
+      alert((e && e.message) || 'No se pudo eliminar');
     }
   };
 
   return (
     <div style={{ maxWidth: 980, margin: '0 auto' }}>
-      {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
-        <h1 style={{ fontSize: 20, fontWeight: 600, margin: 0, flex: 1 }}>Unidades de medida</h1>
-        {!creating && (
-          <button
-            onClick={() => setCreating(true)}
-            style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '8px 10px', background: '#fff' }}
-          >
-            + Nueva UoM
-          </button>
-        )}
-        {creating && (
-          <button
-            onClick={() => setCreating(false)}
-            style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '8px 10px', background: '#fff' }}
-          >
-            Cancelar
-          </button>
-        )}
-        <Link to="/masters" style={{ textDecoration: 'none' }}>← Volver</Link>
+        <h1 style={{ fontSize: 20, fontWeight: 600, margin: 0, flex: 1 }}>Unidades de Medida</h1>
+        <Link to="/masters" style={{ textDecoration: 'none', border: '1px solid #cbd5e1', borderRadius: 8, padding: '8px 10px' }}>
+          ← Volver a Maestros
+        </Link>
+        <button onClick={startNew} style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '8px 10px', background: '#fff' }}>
+          + Nueva UoM
+        </button>
       </div>
 
       {/* Filtros */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 180px 160px', gap: 12, alignItems: 'end', marginBottom: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 160px 160px', gap: 12, alignItems: 'end', marginBottom: 12 }}>
         <div>
           <Label>Buscar</Label>
           <input
+            type="text"
             value={q}
             onChange={(e) => setParam('q', e.target.value, { resetPage: true })}
             placeholder="Código o nombre…"
@@ -169,8 +102,10 @@ export default function Uom() {
             onChange={(e) => setParam('sort', e.target.value, { resetPage: true })}
             style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '8px 10px', width: '100%' }}
           >
-            <option value="code">Código</option>
-            <option value="name">Nombre</option>
+            <option value="code">Código asc.</option>
+            <option value="-code">Código desc.</option>
+            <option value="name">Nombre asc.</option>
+            <option value="-name">Nombre desc.</option>
           </select>
         </div>
         <div>
@@ -187,62 +122,37 @@ export default function Uom() {
         </div>
       </div>
 
-      {/* Estado */}
       {isError && <div style={{ color: '#b91c1c', marginBottom: 8 }}>Error cargando UoM.</div>}
       {isLoading && <div style={{ color: '#475569', marginBottom: 8 }}>Cargando…</div>}
 
-      {/* Tabla */}
       {!isLoading && (
         <table style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid #e2e8f0', borderRadius: 8, overflow: 'hidden' }}>
           <thead style={{ background: '#f8fafc' }}>
             <tr>
-              <th style={{ textAlign: 'left', padding: '10px 8px', fontSize: 12, color: '#334155' }}>ID</th>
               <th style={{ textAlign: 'left', padding: '10px 8px', fontSize: 12, color: '#334155' }}>Código</th>
               <th style={{ textAlign: 'left', padding: '10px 8px', fontSize: 12, color: '#334155' }}>Nombre</th>
-              <th style={{ textAlign: 'left', padding: '10px 8px', fontSize: 12, color: '#334155' }}>Estado</th>
+              <th style={{ textAlign: 'center', padding: '10px 8px', fontSize: 12, color: '#334155' }}>Activo</th>
               <th style={{ textAlign: 'left', padding: '10px 8px', fontSize: 12, color: '#334155' }}>Acciones</th>
             </tr>
           </thead>
           <tbody>
-            {creating && (
-              <RowForm initial={null} onCancel={() => setCreating(false)} onSaved={onSaved} />
-            )}
-            {items.map((u) =>
-              editingId === u.id ? (
-                <RowForm key={u.id} initial={u} onCancel={() => setEditingId(null)} onSaved={onSaved} />
-              ) : (
-                <tr key={u.id} style={{ borderTop: '1px solid #e2e8f0' }}>
-                  <td style={{ padding: '8px' }}>#{u.id}</td>
-                  <td style={{ padding: '8px' }}>{u.code}</td>
-                  <td style={{ padding: '8px' }}>{u.name}</td>
-                  <td style={{ padding: '8px' }}>
-                    <span style={{
-                      padding: '2px 8px', borderRadius: 999,
-                      background: u.active ? '#dcfce7' : '#f1f5f9',
-                      border: '1px solid #cbd5e1', fontSize: 12
-                    }}>
-                      {u.active ? 'Activo' : 'Inactivo'}
-                    </span>
-                  </td>
-                  <td style={{ padding: '8px', display: 'flex', gap: 8 }}>
-                    <button
-                      onClick={() => setEditingId(u.id)}
-                      style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '6px 10px', background: '#fff' }}
-                    >
-                      Editar
-                    </button>
-                    <button
-                      onClick={() => onDelete(u.id)}
-                      style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '6px 10px', background: '#fff' }}
-                    >
-                      Eliminar
-                    </button>
-                  </td>
-                </tr>
-              )
-            )}
-            {items.length === 0 && !creating && (
-              <tr><td colSpan={5} style={{ padding: 16, color: '#64748b' }}>Sin resultados.</td></tr>
+            {items.map((r) => (
+              <tr key={r.id ?? `${r.code}-${r.name}`} style={{ borderTop: '1px solid #e2e8f0' }}>
+                <td style={{ padding: '10px 8px' }}>{r.code}</td>
+                <td style={{ padding: '10px 8px' }}>{r.name}</td>
+                <td style={{ padding: '10px 8px', textAlign: 'center' }}>{r.activo ? 'Sí' : 'No'}</td>
+                <td style={{ padding: '10px 8px', display: 'flex', gap: 8 }}>
+                  <button onClick={() => startEdit(r)} style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '6px 8px', background: '#fff' }}>
+                    Editar
+                  </button>
+                  <button onClick={() => onDelete(r)} style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '6px 8px', background: '#fff' }}>
+                    Eliminar
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {items.length === 0 && (
+              <tr><td colSpan={4} style={{ padding: 16, color: '#64748b' }}>Sin resultados.</td></tr>
             )}
           </tbody>
         </table>
@@ -250,28 +160,70 @@ export default function Uom() {
 
       {/* Paginación */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
-        <div style={{ fontSize: 12, color: '#475569' }}>
-          Página {page} · {items.length} de {limit}
-        </div>
+        <div style={{ fontSize: 12, color: '#475569' }}>Página {page} · {items.length} de {limit}</div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button
             onClick={() => setParam('page', String(page - 1))}
             disabled={page <= 1}
             style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '8px 10px',
-                     background: page <= 1 ? '#f1f5f9' : '#fff', cursor: page <= 1 ? 'not-allowed' : 'pointer' }}
-          >
+                     background: page <= 1 ? '#f1f5f9' : '#fff', cursor: page <= 1 ? 'not-allowed' : 'pointer' }}>
             ← Anterior
           </button>
           <button
             onClick={() => setParam('page', String(page + 1))}
             disabled={!hasNext}
             style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '8px 10px',
-                     background: !hasNext ? '#f1f5f9' : '#fff', cursor: !hasNext ? 'not-allowed' : 'pointer' }}
-          >
+                     background: !hasNext ? '#f1f5f9' : '#fff', cursor: !hasNext ? 'not-allowed' : 'pointer' }}>
             Siguiente →
           </button>
         </div>
       </div>
+
+      {/* Formulario lateral/simple */}
+      {showForm && (
+        <div style={{ marginTop: 16, border: '1px solid #e2e8f0', borderRadius: 12, padding: 12 }}>
+          <div style={{ fontWeight: 600, marginBottom: 10 }}>{editRow ? 'Editar UoM' : 'Nueva UoM'}</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.5fr 120px', gap: 12 }}>
+            <div>
+              <Label>Código</Label>
+              <input
+                value={form.code}
+                onChange={(e) => setForm({ ...form, code: e.target.value })}
+                placeholder="Ej: kg, un, caja"
+                style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '8px 10px', width: '100%' }}
+              />
+            </div>
+            <div>
+              <Label>Nombre</Label>
+              <input
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                placeholder="Kilogramo, Unidad, Caja"
+                style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '8px 10px', width: '100%' }}
+              />
+            </div>
+            <div>
+              <Label>Activo</Label>
+              <select
+                value={form.activo ? '1' : '0'}
+                onChange={(e) => setForm({ ...form, activo: e.target.value === '1' })}
+                style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '8px 10px', width: '100%' }}
+              >
+                <option value="1">Sí</option>
+                <option value="0">No</option>
+              </select>
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+            <button onClick={onSubmit} style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '8px 12px', background: '#fff', fontWeight: 600 }}>
+              Guardar
+            </button>
+            <button onClick={() => setShowForm(false)} style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '8px 12px', background: '#fff' }}>
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
