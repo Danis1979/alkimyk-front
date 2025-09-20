@@ -1,53 +1,73 @@
 // src/services/suppliers.service.js
 import { http } from '../lib/http';
 
-function normSupplier(s) {
+export function normalizeSupplier(s = {}) {
   return {
     id: s.id,
-    nombre: s.nombre ?? s.name ?? s.supplier ?? s.proveedor ?? '',
+    nombre: s.nombre ?? s.name ?? s.razonSocial ?? '',
     cuit: s.cuit ?? s.taxId ?? '',
     direccion: s.direccion ?? s.address ?? '',
     email: s.email ?? '',
     telefono: s.telefono ?? s.phone ?? '',
-    raw: s,
+    activo: s.activo ?? s.active ?? true,
+    _raw: s,
   };
 }
 
-export async function searchSuppliers({ q = '', page = 1, limit = 20 } = {}) {
-  const qs = new URLSearchParams();
-  if (q) qs.set('q', q);
-  if (page) qs.set('page', String(page));
-  if (limit) qs.set('limit', String(limit));
-
-  // Variantes comunes: suppliers / providers
-  const candidates = [
-    `/suppliers/search?${qs.toString()}`,
-    `/suppliers?${qs.toString()}`,
-    `/suppliers/list?${qs.toString()}`,
-    `/providers/search?${qs.toString()}`,
-    `/providers?${qs.toString()}`
-  ];
-
-  for (const url of candidates) {
-    try {
-      const { data } = await http.get(url);
-      const arr = Array.isArray(data?.items)
-        ? data.items
-        : Array.isArray(data)
-        ? data
-        : Array.isArray(data?.data)
-        ? data.data
-        : Array.isArray(data?.results)
-        ? data.results
-        : [];
-      if (arr) return { items: arr.map(normSupplier), page, pages: undefined, total: undefined };
-    } catch (_) {}
-  }
-  return { items: [], page, pages: undefined, total: undefined };
+function toPayload(x = {}) {
+  return {
+    id: x.id,
+    nombre: x.nombre?.trim() || null,
+    cuit: x.cuit?.trim() || null,
+    direccion: x.direccion?.trim() || null,
+    email: x.email?.trim() || null,
+    telefono: x.telefono?.trim() || null,
+    activo: !!x.activo,
+  };
 }
 
-export async function createSupplier(payload) {
-  // payload mínimo: { nombre, cuit?, direccion?, email?, telefono? }
+export async function searchSuppliers({ page = 1, limit = 20, q = '', sort = 'nombre' } = {}) {
+  const qs = new URLSearchParams({ page: String(page), limit: String(limit) });
+  if (q) qs.set('q', q);
+  if (sort) qs.set('sort', sort);
+
+  try {
+    const { data } = await http.get(`/suppliers/search?${qs.toString()}`);
+    const items = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
+    const total = data?.total ?? undefined;
+    const pages = data?.pages ?? (total ? Math.max(1, Math.ceil(total / limit)) : undefined);
+    return { items: items.map(normalizeSupplier), page: data?.page ?? page, pages, total };
+  } catch {}
+
+  try {
+    const { data } = await http.get(`/suppliers?${qs.toString()}`);
+    const arr = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
+    const total = data?.total ?? undefined;
+    const pages = data?.pages ?? (total ? Math.max(1, Math.ceil(total / limit)) : undefined);
+    return { items: arr.map(normalizeSupplier), page, pages, total };
+  } catch {
+    return { items: [], page, pages: 1, total: 0 };
+  }
+}
+
+export async function createSupplier(form) {
+  const payload = toPayload(form);
   const { data } = await http.post('/suppliers', payload);
-  return data;
+  return normalizeSupplier(data ?? payload);
+}
+
+export async function updateSupplier(id, form) {
+  const payload = toPayload({ ...form, id });
+  try {
+    const { data } = await http.put(`/suppliers/${id}`, payload);
+    return normalizeSupplier(data ?? payload);
+  } catch {
+    const { data } = await http.patch(`/suppliers/${id}`, payload);
+    return normalizeSupplier(data ?? payload);
+  }
+}
+
+export async function deleteSupplier(id) {
+  await http.delete(`/suppliers/${id}`);
+  return true;
 }
