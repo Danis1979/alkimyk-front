@@ -46,7 +46,7 @@ export default function App() {
           <Route path="/production/new" element={<ProductionNew />} />
 
           <Route path="/cheques" element={<Cheques />} />
-          <Route path="/masters" element={<Masters />} />
+          <Route path="/masters/*" element={<Masters />} />
           <Route path="/reports" element={<Reports />} />
 
           {/* Redirects */}

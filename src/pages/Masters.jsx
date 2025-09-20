@@ -1,27 +1,83 @@
 // src/pages/Masters.jsx
-import { Link } from 'react-router-dom';
+import { Link, Routes, Route } from 'react-router-dom';
 
-export default function Masters() {
-  const Card = ({ title, to, desc }) => (
-    <Link to={to} style={{
-      textDecoration:'none', border:'1px solid #e2e8f0', borderRadius:12, padding:16, display:'block'
-    }}>
-      <div style={{fontWeight:600, color:'#0f172a', marginBottom:6}}>{title}</div>
-      <div style={{color:'#64748b', fontSize:14}}>{desc}</div>
+function Card({ to, title, subtitle }) {
+  return (
+    <Link
+      to={to}
+      style={{
+        display: 'block',
+        textDecoration: 'none',
+        border: '1px solid #e2e8f0',
+        borderRadius: 12,
+        padding: 14,
+        background: '#fff',
+      }}
+    >
+      <div style={{ fontWeight: 600, color: '#0f172a', marginBottom: 4 }}>{title}</div>
+      <div style={{ color: '#64748b', fontSize: 13 }}>{subtitle}</div>
     </Link>
   );
+}
 
+function Home() {
   return (
-    <div style={{maxWidth:1000, margin:'0 auto'}}>
-      <h1 style={{fontSize:20, fontWeight:600, marginBottom:12}}>Maestros</h1>
-      <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12}}>
-        <Card title="Productos / Insumos" to="/masters/products"
-              desc="Alta y edición de productos, con SKU, UOM y precios." />
-        <Card title="Clientes" to="/masters/clients"
-              desc="Alta, CUIT, dirección y contactos." />
-        <Card title="Proveedores" to="/masters/suppliers"
-              desc="Alta de proveedores, CUIT y contacto." />
+    <>
+      <h1 style={{ fontSize: 20, fontWeight: 600, margin: 0, marginBottom: 12 }}>Maestros</h1>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+          gap: 12,
+          maxWidth: 820,
+        }}
+      >
+        <Card to="products"  title="Productos / Insumos" subtitle="ABM, SKU, UoM, precios, activo" />
+        <Card to="clients"   title="Clientes"           subtitle="ABM, CUIT, dirección, listas de precio" />
+        <Card to="suppliers" title="Proveedores"        subtitle="ABM, CUIT, contacto" />
+        <Card to="uom"       title="Unidades de medida" subtitle="kg, un, caja, etc." />
+        <Card to="prices"    title="Listas de precios"  subtitle="Gestión de listas y asignación" />
       </div>
+    </>
+  );
+}
+
+function Stub({ title }) {
+  return (
+    <div style={{ maxWidth: 900 }}>
+      <h1 style={{ fontSize: 20, fontWeight: 600, margin: 0, marginBottom: 8 }}>{title}</h1>
+      <p style={{ color: '#64748b', marginBottom: 12 }}>
+        Página en construcción. Acá va el ABM completo según el modelo.
+      </p>
+      <Link
+        to="/masters"
+        style={{
+          textDecoration: 'none',
+          border: '1px solid #cbd5e1',
+          borderRadius: 8,
+          padding: '8px 10px',
+          display: 'inline-block',
+        }}
+      >
+        ← Volver a Maestros
+      </Link>
+    </div>
+  );
+}
+
+export default function Masters() {
+  return (
+    <div style={{ maxWidth: 980, margin: '0 auto' }}>
+      <Routes>
+        <Route index element={<Home />} />
+        <Route path="products"  element={<Stub title="Productos / Insumos" />} />
+        <Route path="clients"   element={<Stub title="Clientes" />} />
+        <Route path="suppliers" element={<Stub title="Proveedores" />} />
+        <Route path="uom"       element={<Stub title="Unidades de medida" />} />
+        <Route path="prices"    element={<Stub title="Listas de precios" />} />
+        {/* fallback de seguridad dentro de /masters */}
+        <Route path="*" element={<Home />} />
+      </Routes>
     </div>
   );
 }
