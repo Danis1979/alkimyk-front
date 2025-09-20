@@ -12,7 +12,7 @@ import Sales from './pages/Sales.jsx';
 import SalesNew from './pages/SalesNew.jsx';
 import Purchases from './pages/Purchases.jsx';
 import PurchasesNew from './pages/PurchasesNew.jsx';
-import Production from './pages/Production.jsx';
+import ProductionNew from './pages/ProductionNew.jsx';
 import Cheques from './pages/Cheques.jsx';
 import Masters from './pages/Masters.jsx';
 import Reports from './pages/Reports.jsx';
@@ -37,6 +37,7 @@ export default function App() {
           <Route path="/purchases" element={<Purchases />} />
             <Route path="/purchases/new" element={<PurchasesNew />} />
           <Route path="/production" element={<Production />} />
+          <Route path="/production/new" element={<ProductionNew />} />
           <Route path="/cheques" element={<Cheques />} />
           <Route path="/masters" element={<Masters />} />
             <Route path="/purchases" element={<Purchases />} />
