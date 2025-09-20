@@ -1,3 +1,4 @@
+// src/pages/PurchasesNew.jsx
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { fmtCurrency } from '../lib/format';
@@ -8,7 +9,7 @@ import ProductTypeahead from '../components/ProductTypeahead';
 const PM_OPTS = [
   { value: 'Contado',        label: 'Contado' },
   { value: 'Transferencia',  label: 'Transferencia' },
-  { value: 'Cheque',         label: 'Cheque' },
+  { value: 'Cheque',         label: 'Cheque (emitido)' },
   { value: 'CuentaCorriente',label: 'Cuenta Corriente' },
 ];
 
@@ -26,17 +27,18 @@ export default function PurchasesNew() {
   const [pm, setPm] = useState('Contado');
 
   // Proveedor
-  const [supplierId, setSupplierId] = useState(null);
+  const [supplierId, setSupplierId]   = useState(null);
   const [supplierLabel, setSupplierLabel] = useState('');
 
-  // Ítems: usaremos productId (el backend acepta insumoId|productId)
+  // Ítems (insumos/productos)
   const [items, setItems] = useState([
     { key: 1, productId: null, productLabel: '', qty: 1, price: 0 },
   ]);
 
   const totals = useMemo(() => {
-    const total = items.reduce((acc, it) => acc + number(it.qty) * number(it.price), 0);
-    return { total };
+    const subtotal = items.reduce((acc, it) => acc + number(it.qty) * number(it.price), 0);
+    const iva = 0;
+    return { subtotal, iva, total: subtotal + iva };
   }, [items]);
 
   const canSave = useMemo(() => {
@@ -54,22 +56,28 @@ export default function PurchasesNew() {
   const updateItem = (key, patch) => setItems(items.map(it => (it.key === key ? { ...it, ...patch } : it)));
 
   const onSubmit = async () => {
+    // Según tu modelo: purchases {supplierId, fecha, items:[{insumoId|productId, qty, price}], total, pm, estado}
     const payload = {
       supplierId,
-      supplier: supplierLabel.trim() || null,
+      supplier: supplierLabel.trim() || null, // por si admitís texto libre
       fecha: new Date(date).toISOString(),
       pm,
       estado: 'Confirmada',
       items: items
         .filter(it => (it.productId || it.productLabel.trim()) && number(it.qty) > 0)
         .map(it => ({
-          productId: it.productId,                 // el backend acepta insumoId|productId
-          product: it.productLabel.trim() || null, // nombre libre si no hay id
+          // Preferimos insumoId para compras; si tu backend acepta productId, igual lo verá
+          insumoId: it.productId ?? null,
+          productId: it.productId ?? null, // lo mandamos también por compatibilidad
+          product: it.productLabel.trim() || null,
           qty: number(it.qty),
           price: number(it.price),
         })),
+      subtotal: totals.subtotal,
+      iva: totals.iva,
       total: totals.total,
     };
+
     try {
       const { data } = await http.post('/purchases', payload);
       if (data?.id) { navigate('/purchases', { replace: true }); return; }
@@ -115,14 +123,14 @@ export default function PurchasesNew() {
 
       {/* Ítems */}
       <div style={{ marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div style={{ fontSize: 14, fontWeight: 600, color: '#334155' }}>Ítems</div>
+        <div style={{ fontSize: 14, fontWeight: 600, color: '#334155' }}>Ítems (insumos/productos)</div>
         <button onClick={addItem} style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '6px 10px', background: '#fff' }}>+ Agregar ítem</button>
       </div>
 
       <table style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid #e2e8f0', borderRadius: 8, overflow: 'hidden' }}>
         <thead style={{ background: '#f8fafc' }}>
           <tr>
-            <th style={{ textAlign: 'left', padding: '10px 8px', fontSize: 12, color: '#334155' }}>Insumo / Producto</th>
+            <th style={{ textAlign: 'left',  padding: '10px 8px', fontSize: 12, color: '#334155' }}>Insumo/Producto</th>
             <th style={{ textAlign: 'right', padding: '10px 8px', fontSize: 12, color: '#334155' }}>Cantidad</th>
             <th style={{ textAlign: 'right', padding: '10px 8px', fontSize: 12, color: '#334155' }}>Precio</th>
             <th style={{ textAlign: 'right', padding: '10px 8px', fontSize: 12, color: '#334155' }}>Importe</th>
@@ -136,15 +144,15 @@ export default function PurchasesNew() {
               <tr key={it.key} style={{ borderTop: '1px solid #e2e8f0' }}>
                 <td style={{ padding: '8px 8px' }}>
                   <ProductTypeahead
-                    placeholder="Insumo o producto…"
                     value={it.productLabel}
                     selectedId={it.productId}
                     onChange={(txt) => updateItem(it.key, { productLabel: txt })}
                     onSelect={(id, label, price) => {
                       const patch = { productId: id, productLabel: label ?? '' };
-                      if (!number(it.price) && Number.isFinite(+price) && +price > 0) patch.price = +price;
+                      if (!number(it.price) && number(price) > 0) patch.price = Number(price);
                       updateItem(it.key, patch);
                     }}
+                    placeholder="Buscar insumo/producto…"
                   />
                 </td>
                 <td style={{ padding: '8px 8px', textAlign: 'right' }}>
@@ -180,10 +188,21 @@ export default function PurchasesNew() {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16, marginTop: 16 }}>
         <div />
         <div style={{ border: '1px solid #e2e8f0', borderRadius: 12, padding: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+            <span style={{ color: '#475569' }}>Subtotal</span><strong>{fmtCurrency(totals.subtotal)}</strong>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+            <span style={{ color: '#475569' }}>IVA</span><strong>{fmtCurrency(totals.iva)}</strong>
+          </div>
+          <div style={{ height: 1, background: '#e2e8f0', margin: '8px 0' }} />
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
             <span style={{ color: '#0f172a', fontWeight: 600 }}>Total</span><strong style={{ fontSize: 18 }}>{fmtCurrency(totals.total)}</strong>
           </div>
-          <button onClick={onSubmit} disabled={!canSave} style={{ marginTop: 12, width: '100%', padding: '10px 12px', border: '1px solid #cbd5e1', borderRadius: 10, background: canSave ? '#ffffff' : '#f1f5f9', cursor: canSave ? 'pointer' : 'not-allowed', fontWeight: 600 }}>
+          <button
+            onClick={onSubmit}
+            disabled={!canSave}
+            style={{ marginTop: 12, width: '100%', padding: '10px 12px', border: '1px solid #cbd5e1', borderRadius: 10, background: canSave ? '#ffffff' : '#f1f5f9', cursor: canSave ? 'pointer' : 'not-allowed', fontWeight: 600 }}
+          >
             Guardar
           </button>
           {!canSave && <div style={{ marginTop: 8, color: '#64748b', fontSize: 12 }}>Completá proveedor y al menos un ítem con cantidad &gt; 0.</div>}

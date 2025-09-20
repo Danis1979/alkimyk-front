@@ -1,3 +1,4 @@
+// src/pages/Purchases.jsx
 import { useMemo } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -11,14 +12,17 @@ function Label({ children }) {
 export default function Purchases() {
   const [sp, setSp] = useSearchParams();
 
+  // Defaults + lectura desde URL
   const page  = Math.max(1, parseInt(sp.get('page')  || '1', 10));
   const limit = [10, 20, 50].includes(parseInt(sp.get('limit') || '20', 10))
-    ? parseInt(sp.get('limit') || '20', 10) : 20;
-  const sort  = sp.get('sort') || '-fecha';   // -fecha | fecha | -total | total
+    ? parseInt(sp.get('limit') || '20', 10)
+    : 20;
+  const sort  = sp.get('sort') || '-fecha';     // -fecha | fecha | -total | total
   const q     = sp.get('q') || '';
 
   const queryKey = useMemo(() => ['purchases.search', { page, limit, sort, q }], [page, limit, sort, q]);
 
+  // Helpers para escribir params y resetear page cuando cambian filtros
   const setParam = (key, value, { resetPage = false } = {}) => {
     const next = new URLSearchParams(sp);
     if (value === undefined || value === null || value === '' ) next.delete(key);
@@ -34,7 +38,7 @@ export default function Purchases() {
   });
 
   const items = data?.items ?? [];
-  const hasNext = items.length === limit;
+  const hasNext = items.length === limit; // heurística si el backend no da total/pages
 
   return (
     <div style={{ maxWidth: 980, margin: '0 auto' }}>
@@ -70,7 +74,7 @@ export default function Purchases() {
             type="text"
             value={q}
             onChange={(e) => setParam('q', e.target.value, { resetPage: true })}
-            placeholder="Ej: Proveedor S.A."
+            placeholder="Ej: Proveedor SA"
             style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '8px 10px', width: '100%' }}
           />
         </div>
@@ -128,29 +132,24 @@ export default function Purchases() {
         <table style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid #e2e8f0', borderRadius: 8, overflow: 'hidden' }}>
           <thead style={{ background: '#f8fafc' }}>
             <tr>
-              <th style={{ textAlign: 'left', padding: '10px 8px', fontWeight: 600, fontSize: 12, color: '#334155' }}>ID</th>
-              <th style={{ textAlign: 'left', padding: '10px 8px', fontWeight: 600, fontSize: 12, color: '#334155' }}>Fecha</th>
-              <th style={{ textAlign: 'left', padding: '10px 8px', fontWeight: 600, fontSize: 12, color: '#334155' }}>Proveedor</th>
+              <th style={{ textAlign: 'left',  padding: '10px 8px', fontWeight: 600, fontSize: 12, color: '#334155' }}>ID</th>
+              <th style={{ textAlign: 'left',  padding: '10px 8px', fontWeight: 600, fontSize: 12, color: '#334155' }}>Fecha</th>
+              <th style={{ textAlign: 'left',  padding: '10px 8px', fontWeight: 600, fontSize: 12, color: '#334155' }}>Proveedor</th>
               <th style={{ textAlign: 'right', padding: '10px 8px', fontWeight: 600, fontSize: 12, color: '#334155' }}>Total</th>
-              <th style={{ textAlign: 'left', padding: '10px 8px', fontWeight: 600, fontSize: 12, color: '#334155' }}>Acciones</th>
             </tr>
           </thead>
           <tbody>
             {items.map((o) => (
               <tr key={o.id} style={{ borderTop: '1px solid #e2e8f0' }}>
                 <td style={{ padding: '10px 8px' }}>#{o.id}</td>
-                <td style={{ padding: '10px 8px' }}>{o.fecha ? new Date(o.fecha).toLocaleDateString('es-AR') : ''}</td>
+                <td style={{ padding: '10px 8px' }}>{o.fecha ? new Date(o.fecha).toLocaleDateString('es-AR') : '—'}</td>
                 <td style={{ padding: '10px 8px' }}>{o.supplier}</td>
                 <td style={{ padding: '10px 8px', textAlign: 'right' }}>{fmtCurrency(o.total)}</td>
-                <td style={{ padding: '10px 8px' }}>
-                  {/* Dejar listo para detalle futuro */}
-                  <span style={{ color:'#64748b' }}>—</span>
-                </td>
               </tr>
             ))}
             {items.length === 0 && (
               <tr>
-                <td colSpan={5} style={{ padding: 16, color: '#64748b' }}>
+                <td colSpan={4} style={{ padding: 16, color: '#64748b' }}>
                   Sin resultados.
                 </td>
               </tr>
