@@ -1,90 +1,131 @@
 // src/services/products.service.js
 import { http } from '../lib/http';
 
-// Normalización a tu modelo
-export function normalizeProduct(p = {}) {
+// Normaliza el producto a nuestro shape interno
+function normProduct(p = {}) {
+  const id =
+    p.id ??
+    p.productId ??
+    p._id ??
+    null;
+
+  const nombre =
+    p.nombre ??
+    p.name ??
+    p.title ??
+    '';
+
+  const sku =
+    p.sku ??
+    p.code ??
+    '';
+
+  const uom =
+    p.uom ??
+    p.unidad ??
+    p.unidadMedida ??
+    '';
+
+  const tipo =
+    p.tipo ??
+    p.type ??
+    'simple'; // 'rellena' | 'simple'
+
+  const costoStd = Number.isFinite(Number(p.costoStd)) ? Number(p.costoStd) :
+                   Number.isFinite(Number(p.costo))    ? Number(p.costo)    :
+                   0;
+
+  const precioLista = Number.isFinite(Number(p.precioLista)) ? Number(p.precioLista) :
+                      Number.isFinite(Number(p.price))       ? Number(p.price)       :
+                      0;
+
+  const activo =
+    (p.activo !== undefined ? p.activo :
+     p.active !== undefined ? p.active : true) ? true : false;
+
+  return { id, nombre, sku, uom, tipo, costoStd, precioLista, activo, raw: p };
+}
+
+// Prepara payload al contrato del backend (nombre en español por defecto)
+function toBackendPayload(p = {}) {
   return {
     id: p.id,
-    sku: p.sku ?? p.code ?? '',
-    name: p.name ?? p.nombre ?? '',
-    uom: p.uom ?? p.unidad ?? p.unit ?? '',
-    tipo: p.tipo ?? p.type ?? 'simple',                 // 'rellena' | 'simple'
-    costoStd: Number(p.costoStd ?? p.costStd ?? p.costo ?? 0) || 0,
-    precioLista: Number(p.precioLista ?? p.listPrice ?? p.precio ?? 0) || 0,
-    activo: !!(p.activo ?? p.active ?? true),
-    _raw: p,
+    nombre: p.nombre ?? p.name ?? '',
+    sku: p.sku ?? '',
+    uom: p.uom ?? '',
+    tipo: p.tipo ?? 'simple',
+    costoStd: Number.isFinite(Number(p.costoStd)) ? Number(p.costoStd) : 0,
+    precioLista: Number.isFinite(Number(p.precioLista)) ? Number(p.precioLista) : 0,
+    activo: !!(p.activo ?? true),
   };
 }
 
-// Convierte el form al payload del backend (campos canónicos)
-function toPayload(x) {
-  return {
-    id: x.id,
-    sku: x.sku?.trim() || null,
-    name: x.name?.trim() || null,
-    uom: x.uom?.trim() || null,
-    tipo: x.tipo || 'simple',
-    costoStd: Number(x.costoStd) || 0,
-    precioLista: Number(x.precioLista) || 0,
-    activo: !!x.activo,
-  };
-}
-
-export async function searchProducts({ page = 1, limit = 20, q = '', sort = 'name' } = {}) {
+// Búsqueda con paginado + tolerante a distintos formatos
+export async function searchProducts({ page = 1, limit = 20, sort = 'nombre', q, onlyActive } = {}) {
   const qs = new URLSearchParams({ page: String(page), limit: String(limit) });
-  if (q) qs.set('q', q);
   if (sort) qs.set('sort', sort);
+  if (q) qs.set('q', q);
+  if (onlyActive !== undefined) qs.set('onlyActive', String(!!onlyActive));
 
-  // 1) Intento estándar
+  // 1) Preferido
   try {
     const { data } = await http.get(`/products/search?${qs.toString()}`);
-    const items = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
-    const total = data?.total ?? undefined;
-    const pages = data?.pages ?? (total ? Math.max(1, Math.ceil(total / limit)) : undefined);
+    const arr = Array.isArray(data?.items) ? data.items : (Array.isArray(data) ? data : []);
     return {
-      items: items.map(normalizeProduct),
-      page: data?.page ?? page,
-      pages,
-      total,
+      items: arr.map(normProduct),
+      page:  data?.page  ?? page,
+      pages: data?.pages ?? (data?.total ? Math.max(1, Math.ceil(Number(data.total) / limit)) : undefined),
+      total: data?.total,
+      meta:  data?.meta,
     };
-  } catch (_) {}
+  } catch (_) { /* sigue */ }
 
-  // 2) Fallback: /products (paginado o no)
+  // 2) Fallback: /products (puede ser array directo)
   try {
     const { data } = await http.get(`/products?${qs.toString()}`);
-    const arr = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
-    const total = data?.total ?? undefined;
-    const pages = data?.pages ?? (total ? Math.max(1, Math.ceil(total / limit)) : undefined);
+    const arr = Array.isArray(data?.items) ? data.items : (Array.isArray(data) ? data : []);
     return {
-      items: arr.map(normalizeProduct),
+      items: arr.map(normProduct),
       page,
-      pages,
-      total,
+      pages: arr.length === limit ? page + 1 : page, // heurística
+      total: Array.isArray(data?.items) ? Number(data?.total ?? arr.length) : arr.length,
+      meta: data?.meta,
     };
   } catch (e) {
-    // Último recurso
-    return { items: [], page, pages: 1, total: 0 };
+    return { items: [], page, pages: 1, total: 0, error: e?.message ?? 'No disponible' };
   }
 }
 
-export async function createProduct(form) {
-  const payload = toPayload(form);
-  const { data } = await http.post('/products', payload);
-  return normalizeProduct(data ?? payload);
+export async function getProductById(id) {
+  const urls = [`/products/${id}`, `/products/${id}/full`];
+  for (const u of urls) {
+    try {
+      const { data } = await http.get(u);
+      return normProduct(data);
+    } catch (_) {}
+  }
+  return normProduct({ id });
 }
 
-export async function updateProduct(id, form) {
-  const payload = toPayload({ ...form, id });
+export async function createProduct(patch) {
+  const payload = toBackendPayload(patch);
+  const { data } = await http.post('/products', payload);
+  return normProduct(data ?? payload);
+}
+
+export async function updateProduct(id, patch) {
+  const payload = toBackendPayload({ ...patch, id });
+  // Preferimos PATCH; si no está implementado, probamos PUT
   try {
-    const { data } = await http.put(`/products/${id}`, payload);
-    return normalizeProduct(data ?? payload);
-  } catch (_) {
     const { data } = await http.patch(`/products/${id}`, payload);
-    return normalizeProduct(data ?? payload);
+    return normProduct(data ?? payload);
+  } catch (_) {
+    const { data } = await http.put(`/products/${id}`, payload);
+    return normProduct(data ?? payload);
   }
 }
 
 export async function deleteProduct(id) {
   await http.delete(`/products/${id}`);
-  return true;
+  return { ok: true };
 }
