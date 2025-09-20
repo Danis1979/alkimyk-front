@@ -1,69 +1,29 @@
-// src/lib/normalizeList.js
-// Normaliza respuestas variadas (array plano, {items:[]}, {data:[]}, etc.)
-// y mapea a { id, label, price?, sku?, raw }
-export function normalizeList(x, kind = 'generic') {
-  let arr = [];
-  if (Array.isArray(x)) arr = x;
-  else if (Array.isArray(x?.items)) arr = x.items;
-  else if (Array.isArray(x?.data)) arr = x.data;
-  else if (Array.isArray(x?.results)) arr = x.results;
-  else if (x && typeof x === 'object' && Array.isArray(x.items)) arr = x.items;
-  else arr = [];
+/**
+ * Normaliza respuestas de APIs en diferentes formatos a un array homogéneo.
+ * Acepta: [ ... ] | { items:[...] } | { data:[...] } | { results:[...] } | otro
+ * Permite mapear cada item con una función opcional "mapper".
+ */
+export function normalizeList(x, mapper) {
+  const arr = Array.isArray(x) ? x
+    : (Array.isArray(x?.items)   ? x.items
+    :  Array.isArray(x?.data)    ? x.data
+    :  Array.isArray(x?.results) ? x.results
+    :  []);
 
-  return arr
-    .map((obj) => {
-      const id =
-        obj.id ??
-        obj._id ??
-        obj.value ??
-        obj.key ??
-        null;
+  const base = arr.map((it) => {
+    const id =
+      it.id ?? it.ID ?? it._id ?? it.value ?? it.productId ?? it.clientId ?? null;
 
-      let label = '';
-      if (kind === 'client') {
-        label =
-          obj.name ??
-          obj.nombre ??
-          obj.razonSocial ??
-          obj.client ??
-          obj.cliente ??
-          obj.company ??
-          '';
-      } else if (kind === 'product') {
-        label =
-          obj.name ??
-          obj.nombre ??
-          obj.product ??
-          obj.descripcion ??
-          obj.title ??
-          obj.sku ??
-          '';
-      } else {
-        label =
-          obj.name ??
-          obj.nombre ??
-          obj.title ??
-          obj.label ??
-          '';
-      }
+    const label =
+      it.label ?? it.name ?? it.nombre ?? it.title ??
+      it.client ?? it.cliente ?? it.product ?? it.producto ??
+      it.sku ?? '';
 
-      const price =
-        obj.price ??
-        obj.precioLista ??
-        obj.precio ??
-        obj.pvp ??
-        obj.neto ??
-        undefined;
+    return { id, label, name: label, raw: it };
+  });
 
-      const sku = obj.sku ?? obj.codigo ?? undefined;
-
-      return {
-        id,
-        label: String(label || '').trim(),
-        price,
-        sku,
-        raw: obj,
-      };
-    })
-    .filter((o) => o.label || o.id);
+  return mapper ? base.map(mapper) : base;
 }
+
+// Default export para compatibilidad con imports por default
+export default normalizeList;
