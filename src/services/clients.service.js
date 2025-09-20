@@ -1,42 +1,56 @@
 // src/services/clients.service.js
 import { http } from '../lib/http';
 
-// Normaliza diferentes formas de respuesta
-function toArray(x) {
-  if (Array.isArray(x)) return x;
-  if (x && Array.isArray(x.items)) return x.items;
-  if (x && Array.isArray(x.data)) return x.data;
-  if (x && Array.isArray(x.results)) return x.results;
-  return [];
-}
 function normClient(c) {
   return {
-    id: c.id ?? c.clientId ?? c._id ?? null,
-    label: c.name ?? c.nombre ?? c.client ?? c.razonSocial ?? c.razon ?? c.title ?? '',
+    id: c.id,
+    nombre: c.nombre ?? c.name ?? c.client ?? '',
+    cuit: c.cuit ?? c.taxId ?? '',
+    direccion: c.direccion ?? c.address ?? '',
+    condicionesPago: c.condicionesPago ?? c.terms ?? '',
+    listasPrecio: c.listasPrecio ?? c.priceList ?? '',
+    email: c.email ?? '',
+    telefono: c.telefono ?? c.phone ?? '',
     raw: c,
   };
 }
 
-const CANDIDATES = [
-  { path: '/clients/search', qKey: 'q' },
-  { path: '/clients',        qKey: 'q' },
-  { path: '/clients',        qKey: 'search' },
-  { path: '/clients/list',   qKey: 'q' },
-  { path: '/clients/find',   qKey: 'q' },
-  { path: '/clients/autocomplete', qKey: 'q' },
-];
+export async function searchClients({ q = '', page = 1, limit = 20 } = {}) {
+  const qs = new URLSearchParams();
+  if (q) qs.set('q', q);
+  if (page) qs.set('page', String(page));
+  if (limit) qs.set('limit', String(limit));
 
-export async function searchClients({ q = '', limit = 5 } = {}) {
-  for (const { path, qKey } of CANDIDATES) {
+  // Variantes comunes en backends: clients / customers
+  const candidates = [
+    `/clients/search?${qs.toString()}`,
+    `/clients?${qs.toString()}`,
+    `/clients/list?${qs.toString()}`,
+    `/clients/autocomplete?${qs.toString()}`,
+    `/customers/search?${qs.toString()}`,
+    `/customers?${qs.toString()}`
+  ];
+
+  for (const url of candidates) {
     try {
-      const qs = new URLSearchParams();
-      if (q) qs.set(qKey, q);
-      if (limit) qs.set('limit', String(limit));
-      const url = `${path}${qs.toString() ? `?${qs}` : ''}`;
       const { data } = await http.get(url);
-      const arr = toArray(data).map(normClient).filter(c => c.label);
-      if (arr.length) return arr;
-    } catch (_) { /* probamos la siguiente variante */ }
+      const arr = Array.isArray(data?.items)
+        ? data.items
+        : Array.isArray(data)
+        ? data
+        : Array.isArray(data?.data)
+        ? data.data
+        : Array.isArray(data?.results)
+        ? data.results
+        : [];
+      if (arr) return { items: arr.map(normClient), page, pages: undefined, total: undefined };
+    } catch (_) {}
   }
-  return []; // sin datos => el Typeahead deja escribir libre
+  return { items: [], page, pages: undefined, total: undefined };
+}
+
+export async function createClient(payload) {
+  // payload mínimo: { nombre, cuit?, direccion?, email?, telefono? }
+  const { data } = await http.post('/clients', payload);
+  return data;
 }
