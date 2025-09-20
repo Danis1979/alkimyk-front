@@ -5,8 +5,8 @@ import { Link, Routes, Route } from 'react-router-dom';
 import Products from './masters/Products.jsx';
 import Clients from './masters/Clients.jsx';
 import Suppliers from './masters/Suppliers.jsx';
-import Uom from './masters/Uom.jsx';         // ✅ nuevo
-import Prices from './masters/Prices.jsx';   // ✅ nuevo
+import Uom from './masters/Uom.jsx';
+import Prices from './masters/Prices.jsx';
 
 function Card({ to, title, subtitle }) {
   return (
@@ -58,8 +58,9 @@ export default function Masters() {
         <Route path="products"  element={<Products />} />
         <Route path="clients"   element={<Clients />} />
         <Route path="suppliers" element={<Suppliers />} />
-        <Route path="uom"       element={<Uom />} />        {/* ✅ ahora ABM real */}
-        <Route path="prices"    element={<Prices />} />     {/* ✅ ahora ABM real */}
+        <Route path="uom"       element={<Uom />} />
+        <Route path="prices"    element={<Prices />} />
+        {/* Fallback */}
         <Route path="*" element={<Home />} />
       </Routes>
     </div>

@@ -1,111 +1,150 @@
-// src/services/clients.service.js
 import { http } from '../lib/http';
 
-// Normaliza distintas formas del backend al modelo del front
-function normClient(c = {}) {
-  return {
-    id: c.id,
-    nombre: c.nombre ?? c.name ?? '',
-    cuit: c.cuit ?? c.taxId ?? c.cuil ?? '',
-    direccion: c.direccion ?? c.address ?? '',
-    condicionesPago: c.condicionesPago ?? c.paymentTerms ?? '',
-    listasPrecio: c.listasPrecio ?? c.priceLists ?? '',
-    email: c.email ?? '',
-    telefono: c.telefono ?? c.phone ?? '',
-    raw: c,
-  };
-}
-
-// Extrae lista de distintas formas {items}|{data}|{results}|array
-function pickList(x) {
-  if (Array.isArray(x?.items)) return x.items;
-  if (Array.isArray(x?.data)) return x.data;
-  if (Array.isArray(x?.results)) return x.results;
-  if (Array.isArray(x)) return x;
+// Normaliza "listasPrecio" en un array de {id, name}
+function normLists(v) {
+  if (!v) return [];
+  if (Array.isArray(v)) {
+    return v.map(x => {
+      if (typeof x === 'number') return { id: x, name: String(x) };
+      if (typeof x === 'string') return { id: null, name: x };
+      return { id: x.id ?? null, name: x.name ?? x.nombre ?? String(x.id ?? '') };
+    });
+  }
+  if (typeof v === 'string') {
+    return v.split(',').map(s => ({ id: null, name: s.trim() })).filter(x => x.name);
+  }
   return [];
 }
 
-export async function searchClients({ page = 1, limit = 20, sort = 'nombre', q } = {}) {
-  const qs = new URLSearchParams({ page: String(page), limit: String(limit) });
-  if (sort) qs.set('sort', sort);
-  if (q) qs.set('q', q);
+function normClient(x) {
+  return {
+    id: x.id ?? x.ID ?? null,
+    nombre: x.nombre ?? x.name ?? x.client ?? '',
+    cuit: x.cuit ?? x.taxId ?? '',
+    direccion: x.direccion ?? x.address ?? '',
+    condicionesPago: x.condicionesPago ?? x.paymentTerms ?? '',
+    listasPrecio: normLists(x.listasPrecio ?? x.priceLists ?? x.listas),
+    email: x.email ?? '',
+    telefono: x.telefono ?? x.phone ?? '',
+    raw: x,
+  };
+}
 
-  // Probamos varias rutas típicas sin romper si alguna 404
-  const tryUrls = [
-    `/clients/search?${qs.toString()}`,
-    `/clients?${qs.toString()}`,
-    `/clients/list?${qs.toString()}`,
-  ];
+const BASES = ['/clients', '/customers', '/clientes'];
 
-  for (const url of tryUrls) {
+async function tryGet(path) {
+  let lastErr;
+  for (const b of BASES) {
     try {
-      const { data } = await http.get(url);
-      const arr = pickList(data);
-      return {
-        items: arr.map(normClient),
-        page: data?.page ?? page,
-        pages:
-          data?.pages ??
-          (typeof data?.total === 'number' ? Math.max(1, Math.ceil(data.total / limit)) : undefined),
-        total: data?.total,
-      };
-    } catch (_) {
-      // seguimos probando siguiente forma
-    }
+      const { data } = await http.get(`${b}${path}`);
+      return { ok: true, data, base: b };
+    } catch (e) { lastErr = e; }
   }
-  // Fallback vacío para que el UI no crashee
-  return { items: [], page, pages: 1, total: 0 };
+  return { ok: false, err: lastErr };
+}
+
+async function tryPost(path, payload) {
+  let lastErr;
+  for (const b of BASES) {
+    try {
+      const { data } = await http.post(`${b}${path}`, payload);
+      return { ok: true, data, base: b };
+    } catch (e) { lastErr = e; }
+  }
+  return { ok: false, err: lastErr };
+}
+
+async function tryPut(id, payload) {
+  let lastErr;
+  for (const b of BASES) {
+    try {
+      const { data } = await http.put(`${b}/${id}`, payload);
+      return { ok: true, data, base: b };
+    } catch (e) { lastErr = e; }
+  }
+  return { ok: false, err: lastErr };
+}
+
+async function tryDelete(id) {
+  let lastErr;
+  for (const b of BASES) {
+    try {
+      const { data } = await http.delete(`${b}/${id}`);
+      return { ok: true, data, base: b };
+    } catch (e) { lastErr = e; }
+  }
+  return { ok: false, err: lastErr };
+}
+
+export async function searchClients({ page = 1, limit = 20, q = '', sort } = {}) {
+  const qs = new URLSearchParams({ page: String(page), limit: String(limit) });
+  if (q) qs.set('q', q);
+  if (sort) qs.set('sort', sort);
+
+  // 1) /search
+  let r = await tryGet(`/search?${qs.toString()}`);
+  if (r.ok) {
+    const arr = Array.isArray(r.data?.items) ? r.data.items : Array.isArray(r.data) ? r.data : [];
+    return {
+      items: arr.map(normClient),
+      page: r.data?.page ?? page,
+      total: r.data?.total,
+      pages: r.data?.pages,
+      _base: r.base,
+    };
+  }
+
+  // 2) listado plano
+  r = await tryGet('');
+  if (r.ok) {
+    const arr = Array.isArray(r.data?.items) ? r.data.items : Array.isArray(r.data) ? r.data : [];
+    const start = (page - 1) * limit;
+    const slice = arr.slice(start, start + limit);
+    return {
+      items: slice.map(normClient),
+      page,
+      total: arr.length,
+      pages: Math.max(1, Math.ceil(arr.length / limit)),
+      _base: r.base,
+    };
+  }
+
+  return { items: [], page, total: 0, pages: 1, _base: null };
 }
 
 export async function createClient(payload) {
   const body = {
-    ...payload,
-    nombre: payload?.nombre ?? payload?.name ?? '',
-    // compatibilidad si el backend espera "name"
-    name: payload?.nombre ?? payload?.name ?? '',
+    nombre: payload.nombre?.trim() || '',
+    cuit: payload.cuit || '',
+    direccion: payload.direccion || '',
+    condicionesPago: payload.condicionesPago || '',
+    // Enviamos solo IDs si existen; si no, enviamos nombres
+    listasPrecio: (payload.listasPrecio || []).map(x => (x.id ?? x.name)).filter(Boolean),
+    email: payload.email || '',
+    telefono: payload.telefono || '',
   };
-  const attempts = [
-    () => http.post('/clients', body),
-    () => http.post('/clients/new', body),
-  ];
-  for (const call of attempts) {
-    try {
-      const { data } = await call();
-      return data;
-    } catch (_) {}
-  }
-  throw new Error('createClient failed');
+  const r = await tryPost('', body);
+  if (!r.ok) throw r.err || new Error('No se pudo crear cliente');
+  return r.data;
 }
 
 export async function updateClient(id, payload) {
   const body = {
-    ...payload,
-    nombre: payload?.nombre ?? payload?.name ?? '',
-    name: payload?.nombre ?? payload?.name ?? '',
+    nombre: payload.nombre?.trim() || '',
+    cuit: payload.cuit || '',
+    direccion: payload.direccion || '',
+    condicionesPago: payload.condicionesPago || '',
+    listasPrecio: (payload.listasPrecio || []).map(x => (x.id ?? x.name)).filter(Boolean),
+    email: payload.email || '',
+    telefono: payload.telefono || '',
   };
-  const attempts = [
-    () => http.patch(`/clients/${id}`, body),
-    () => http.put(`/clients/${id}`, body),
-  ];
-  for (const call of attempts) {
-    try {
-      const { data } = await call();
-      return data;
-    } catch (_) {}
-  }
-  throw new Error('updateClient failed');
+  const r = await tryPut(id, body);
+  if (!r.ok) throw r.err || new Error('No se pudo actualizar cliente');
+  return r.data;
 }
 
 export async function deleteClient(id) {
-  const attempts = [
-    () => http.delete(`/clients/${id}`),
-    () => http.post(`/clients/${id}/delete`),
-  ];
-  for (const call of attempts) {
-    try {
-      const { data } = await call();
-      return data ?? true;
-    } catch (_) {}
-  }
-  throw new Error('deleteClient failed');
+  const r = await tryDelete(id);
+  if (!r.ok) throw r.err || new Error('No se pudo eliminar cliente');
+  return r.data;
 }
