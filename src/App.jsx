@@ -1,3 +1,4 @@
+// src/App.jsx
 import Nav from './components/Nav.jsx';
 import { Routes, Route, Navigate } from 'react-router-dom';
 
@@ -12,15 +13,17 @@ import Sales from './pages/Sales.jsx';
 import SalesNew from './pages/SalesNew.jsx';
 import Purchases from './pages/Purchases.jsx';
 import PurchasesNew from './pages/PurchasesNew.jsx';
+import Production from './pages/Production.jsx';       // 👈 FALTABA ESTE IMPORT
 import ProductionNew from './pages/ProductionNew.jsx';
 import Cheques from './pages/Cheques.jsx';
 import Masters from './pages/Masters.jsx';
 import Reports from './pages/Reports.jsx';
+
 export default function App() {
   return (
-    <div style={{fontFamily:'system-ui, -apple-system, Segoe UI, Roboto, sans-serif'}}>
+    <div style={{ fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif' }}>
       <Nav />
-      <div style={{padding:16}}>
+      <div style={{ padding: 16 }}>
         <Routes>
           {/* Existentes */}
           <Route path="/dashboard" element={<Dashboard />} />
@@ -34,15 +37,18 @@ export default function App() {
 
           {/* Nuevas rutas */}
           <Route path="/sales" element={<Sales />} />
+          <Route path="/sales/new" element={<SalesNew />} />
+
           <Route path="/purchases" element={<Purchases />} />
-            <Route path="/purchases/new" element={<PurchasesNew />} />
+          <Route path="/purchases/new" element={<PurchasesNew />} />
+
           <Route path="/production" element={<Production />} />
           <Route path="/production/new" element={<ProductionNew />} />
+
           <Route path="/cheques" element={<Cheques />} />
           <Route path="/masters" element={<Masters />} />
-            <Route path="/purchases" element={<Purchases />} />
           <Route path="/reports" element={<Reports />} />
-          <Route path="/sales/new" element={<SalesNew />} />
+
           {/* Redirects */}
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
