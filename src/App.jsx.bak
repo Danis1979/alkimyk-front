@@ -39,7 +39,6 @@ export default function App() {
           <Route path="/production" element={<Production />} />
           <Route path="/cheques" element={<Cheques />} />
           <Route path="/masters" element={<Masters />} />
-            <Route path="/purchases" element={<Purchases />} />
           <Route path="/reports" element={<Reports />} />
           <Route path="/sales/new" element={<SalesNew />} />
           {/* Redirects */}

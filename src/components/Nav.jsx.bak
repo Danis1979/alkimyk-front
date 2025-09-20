@@ -22,7 +22,6 @@ export default function Nav() {
       <NavLink to="/reports" style={sty}>Informes</NavLink>
       <NavLink to="/inventory" style={sty}>Inventario</NavLink>
       <NavLink to="/cxc"       style={sty}>CxC</NavLink>
-      <a href="/purchases" style={{marginRight:12}}>Compras</a>
-</nav>
+    </nav>
   );
 }
