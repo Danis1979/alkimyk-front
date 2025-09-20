@@ -1,4 +1,43 @@
+// src/services/products.service.js
 import { http } from '../lib/http';
-function pickLabel(p){const base=p?.name??p?.nombre??p?.descripcion??`Producto #${p?.id??''}`;return p?.sku?`${p.sku} — ${base}`:base;}
-function pickPrice(p){return p?.precioLista??p?.precio??p?.priceList??p?.price??p?.costoStd??0;}
-export async function searchProducts(q,{limit=8,page=1}={}){if(!q||q.trim().length<2)return[];const qs=new URLSearchParams({q:q.trim(),limit:String(limit),page:String(page)});try{const{data}=await http.get(`/products/search?${qs.toString()}`);const items=Array.isArray(data?.items)?data.items:Array.isArray(data)?data:[];return items.map(p=>({id:p.id,label:pickLabel(p),price:pickPrice(p),raw:p}));}catch{return[];}}
+
+function toArray(x) {
+  if (Array.isArray(x)) return x;
+  if (x && Array.isArray(x.items)) return x.items;
+  if (x && Array.isArray(x.data)) return x.data;
+  if (x && Array.isArray(x.results)) return x.results;
+  return [];
+}
+function normProduct(p) {
+  return {
+    id: p.id ?? p.productId ?? p._id ?? null,
+    label: p.name ?? p.nombre ?? p.product ?? p.title ?? p.sku ?? '',
+    sku: p.sku ?? p.codigo ?? p.code ?? null,
+    price: p.price ?? p.precio ?? p.precioLista ?? p.listPrice ?? 0,
+    raw: p,
+  };
+}
+
+const CANDIDATES = [
+  { path: '/products/search', qKey: 'q' },
+  { path: '/products',        qKey: 'q' },
+  { path: '/products',        qKey: 'search' },
+  { path: '/products/list',   qKey: 'q' },
+  { path: '/products/find',   qKey: 'q' },
+  { path: '/products/autocomplete', qKey: 'q' },
+];
+
+export async function searchProducts({ q = '', limit = 5 } = {}) {
+  for (const { path, qKey } of CANDIDATES) {
+    try {
+      const qs = new URLSearchParams();
+      if (q) qs.set(qKey, q);
+      if (limit) qs.set('limit', String(limit));
+      const url = `${path}${qs.toString() ? `?${qs}` : ''}`;
+      const { data } = await http.get(url);
+      const arr = toArray(data).map(normProduct).filter(p => p.label);
+      if (arr.length) return arr;
+    } catch (_) { /* siguiente variante */ }
+  }
+  return [];
+}
