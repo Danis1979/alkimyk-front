@@ -1,140 +1,172 @@
-import { Body, Controller, Get, Param, Post, Put, Delete, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Put, Query } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 
-type Any = Record<string, any>;
-const i = (v: any, d: number) => {
+function toInt(v: any, def: number) {
   const n = parseInt(String(v ?? ''), 10);
-  return Number.isFinite(n) && n > 0 ? n : d;
-};
+  return Number.isFinite(n) && n > 0 ? n : def;
+}
+
+function parseSort(sort?: string) {
+  // soportado: nombre | -nombre | id | -id | cuit | -cuit
+  const s = (sort || '').trim();
+  let field = 'id';
+  let dir: 'ASC' | 'DESC' = 'DESC';
+  if (s) {
+    const neg = s.startsWith('-');
+    const raw = neg ? s.slice(1) : s;
+    if (['id', 'nombre', 'cuit'].includes(raw)) field = raw;
+    dir = neg ? 'DESC' : 'ASC';
+  }
+  return { field, dir };
+}
 
 @Controller('clients')
 export class ClientsController {
+  private ensured = false;
+
   constructor(private readonly prisma: PrismaService) {}
 
+  private async ensureTables() {
+    if (this.ensured) return;
+    this.ensured = true;
+    // Crea tabla mínima si no existe (demo/MVP)
+    await this.prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS public.clients (
+        id SERIAL PRIMARY KEY,
+        nombre TEXT NOT NULL DEFAULT '',
+        cuit TEXT NOT NULL DEFAULT '',
+        direccion TEXT NOT NULL DEFAULT '',
+        "condicionesPago" TEXT NOT NULL DEFAULT '',
+        "listasPrecio" JSONB,
+        email TEXT NOT NULL DEFAULT '',
+        telefono TEXT NOT NULL DEFAULT '',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+    `);
+  }
+
   @Get('search')
-  async search(@Query('page') pageQ?: string, @Query('limit') limitQ?: string,
-               @Query('q') q?: string, @Query('sort') sort?: string) {
-    const page  = i(pageQ, 1);
-    const limit = [10,20,50].includes(i(limitQ, 20)) ? i(limitQ, 20) : 20;
-    const off   = (page - 1) * limit;
-    const qLike = (q ?? '').trim();
+  async search(
+    @Query('page') pageQ?: string,
+    @Query('limit') limitQ?: string,
+    @Query('q') q?: string,
+    @Query('sort') sort?: string,
+  ) {
+    await this.ensureTables();
+    const page = toInt(pageQ, 1);
+    const limit = [10, 20, 50].includes(toInt(limitQ, 20)) ? toInt(limitQ, 20) : 20;
+    const { field, dir } = parseSort(sort || '-id');
 
-    const order =
-      sort === 'name'  ? 'name ASC'  :
-      sort === '-name' ? 'name DESC' :
-      sort === 'id'    ? 'id ASC'    :
-      sort === '-id'   ? 'id DESC'   : 'name ASC';
-
-    const where = qLike
-      ? `WHERE (c.name ILIKE $1 OR c.cuit ILIKE $1 OR c.email ILIKE $1 OR c.phone ILIKE $1)`
+    const where = (q && q.trim())
+      ? `WHERE (nombre ILIKE '%'||$1||'%' OR cuit ILIKE '%'||$1||'%')`
       : '';
 
-    const params: any[] = [];
-    if (qLike) params.push(`%${qLike}%`);
+    const args: any[] = [];
+    if (where) args.push(q!.trim());
 
-    const totalRow = await this.prisma.$queryRawUnsafe<any[]>(
-      `SELECT COUNT(*)::int AS total FROM cmr."Client" c ${where}`, ...params
+    const totalRows = await this.prisma.$queryRawUnsafe<any[]>(
+      `SELECT COUNT(*)::int AS n FROM public.clients ${where}`, ...args,
     );
-    const total = totalRow[0]?.total ?? 0;
+    const total = totalRows?.[0]?.n ?? 0;
 
+    const offset = (page - 1) * limit;
     const items = await this.prisma.$queryRawUnsafe<any[]>(
-      `SELECT
-         c.id,
-         COALESCE(c.name,'')          AS nombre,
-         COALESCE(c.cuit,'')          AS cuit,
-         COALESCE(c.address,'')       AS direccion,
-         COALESCE(c.payment_terms,'') AS "condicionesPago",
-         COALESCE(c.email,'')         AS email,
-         COALESCE(c.phone,'')         AS telefono
-       FROM cmr."Client" c
-       ${where}
-       ORDER BY ${order}
-       LIMIT $${params.length+1} OFFSET $${params.length+2}`,
-       ...params, limit, off
+      `
+      SELECT id, nombre, cuit, direccion, "condicionesPago", "listasPrecio", email, telefono
+      FROM public.clients
+      ${where}
+      ORDER BY ${field} ${dir}
+      LIMIT $${args.length + 1} OFFSET $${args.length + 2}
+      `,
+      ...args, limit, offset
     );
 
-    return { items, page, total, pages: Math.max(1, Math.ceil(total/limit)) };
+    return {
+      items: items.map(x => ({
+        id: x.id,
+        nombre: x.nombre ?? '',
+        cuit: x.cuit ?? '',
+        direccion: x.direccion ?? '',
+        condicionesPago: x.condicionesPago ?? '',
+        listasPrecio: x.listasPrecio ?? [],
+        email: x.email ?? '',
+        telefono: x.telefono ?? '',
+      })),
+      page,
+      total,
+      pages: Math.max(1, Math.ceil(total / limit)),
+    };
   }
 
+  // Compatibilidad: listado plano
   @Get()
-  async listAll() {
+  async list() {
+    await this.ensureTables();
     const rows = await this.prisma.$queryRawUnsafe<any[]>(
-      `SELECT
-         c.id,
-         COALESCE(c.name,'')          AS nombre,
-         COALESCE(c.cuit,'')          AS cuit,
-         COALESCE(c.address,'')       AS direccion,
-         COALESCE(c.payment_terms,'') AS "condicionesPago",
-         COALESCE(c.email,'')         AS email,
-         COALESCE(c.phone,'')         AS telefono
-       FROM cmr."Client" c
-       ORDER BY name ASC`
+      `SELECT id, nombre, cuit, direccion, "condicionesPago", "listasPrecio", email, telefono
+       FROM public.clients ORDER BY id DESC LIMIT 1000`
     );
-    return { items: rows, total: rows.length };
-  }
-
-  @Get(':id')
-  async getOne(@Param('id') id: string) {
-    const oid = Number(id);
-    const rows = await this.prisma.$queryRawUnsafe<any[]>(
-      `SELECT
-         c.id,
-         COALESCE(c.name,'')          AS nombre,
-         COALESCE(c.cuit,'')          AS cuit,
-         COALESCE(c.address,'')       AS direccion,
-         COALESCE(c.payment_terms,'') AS "condicionesPago",
-         COALESCE(c.email,'')         AS email,
-         COALESCE(c.phone,'')         AS telefono
-       FROM cmr."Client" c
-       WHERE c.id=$1`, oid
-    );
-    return rows[0] ?? null;
+    return rows.map(x => ({
+      id: x.id,
+      nombre: x.nombre ?? '',
+      cuit: x.cuit ?? '',
+      direccion: x.direccion ?? '',
+      condicionesPago: x.condicionesPago ?? '',
+      listasPrecio: x.listasPrecio ?? [],
+      email: x.email ?? '',
+      telefono: x.telefono ?? '',
+    }));
   }
 
   @Post()
-  async create(@Body() b: Any) {
+  async create(@Body() body: any) {
+    await this.ensureTables();
     const data = {
-      name: (b.nombre ?? '').trim(),
-      cuit: b.cuit ?? '',
-      address: b.direccion ?? '',
-      payment_terms: b.condicionesPago ?? '',
-      email: b.email ?? '',
-      phone: b.telefono ?? '',
+      nombre: (body?.nombre ?? '').trim(),
+      cuit: body?.cuit ?? '',
+      direccion: body?.direccion ?? '',
+      condicionesPago: body?.condicionesPago ?? '',
+      listasPrecio: Array.isArray(body?.listasPrecio) ? body.listasPrecio : [],
+      email: body?.email ?? '',
+      telefono: body?.telefono ?? '',
     };
-    const ins = await this.prisma.$queryRawUnsafe<any[]>(
-      `INSERT INTO cmr."Client"(name,cuit,address,payment_terms,email,phone)
-       VALUES ($1,$2,$3,$4,$5,$6)
-       RETURNING id, name AS nombre, cuit, address AS direccion, payment_terms AS "condicionesPago", email, phone AS telefono`,
-       data.name, data.cuit, data.address, data.payment_terms, data.email, data.phone
+    const rows = await this.prisma.$queryRawUnsafe<any[]>(
+      `INSERT INTO public.clients (nombre, cuit, direccion, "condicionesPago", "listasPrecio", email, telefono)
+       VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7)
+       RETURNING id, nombre, cuit, direccion, "condicionesPago", "listasPrecio", email, telefono`,
+      data.nombre, data.cuit, data.direccion, data.condicionesPago, JSON.stringify(data.listasPrecio), data.email, data.telefono
     );
-    return ins[0];
+    return rows[0];
   }
 
   @Put(':id')
-  async update(@Param('id') id: string, @Body() b: Any) {
+  async update(@Param('id') id: string, @Body() body: any) {
+    await this.ensureTables();
     const oid = Number(id);
     const data = {
-      name: (b.nombre ?? '').trim(),
-      cuit: b.cuit ?? '',
-      address: b.direccion ?? '',
-      payment_terms: b.condicionesPago ?? '',
-      email: b.email ?? '',
-      phone: b.telefono ?? '',
+      nombre: (body?.nombre ?? '').trim(),
+      cuit: body?.cuit ?? '',
+      direccion: body?.direccion ?? '',
+      condicionesPago: body?.condicionesPago ?? '',
+      listasPrecio: Array.isArray(body?.listasPrecio) ? body.listasPrecio : [],
+      email: body?.email ?? '',
+      telefono: body?.telefono ?? '',
     };
-    const up = await this.prisma.$queryRawUnsafe<any[]>(
-      `UPDATE cmr."Client"
-         SET name=$1,cuit=$2,address=$3,payment_terms=$4,email=$5,phone=$6
-       WHERE id=$7
-       RETURNING id, name AS nombre, cuit, address AS direccion, payment_terms AS "condicionesPago", email, phone AS telefono`,
-       data.name, data.cuit, data.address, data.payment_terms, data.email, data.phone, oid
+    const rows = await this.prisma.$queryRawUnsafe<any[]>(
+      `UPDATE public.clients
+       SET nombre=$2, cuit=$3, direccion=$4, "condicionesPago"=$5, "listasPrecio"=$6::jsonb, email=$7, telefono=$8
+       WHERE id=$1
+       RETURNING id, nombre, cuit, direccion, "condicionesPago", "listasPrecio", email, telefono`,
+      oid, data.nombre, data.cuit, data.direccion, data.condicionesPago, JSON.stringify(data.listasPrecio), data.email, data.telefono
     );
-    return up[0] ?? null;
+    return rows[0] ?? { id: oid };
   }
 
   @Delete(':id')
   async remove(@Param('id') id: string) {
+    await this.ensureTables();
     const oid = Number(id);
-    await this.prisma.$queryRawUnsafe(`DELETE FROM cmr."Client" WHERE id=$1`, oid);
-    return { ok: true };
+    await this.prisma.$executeRawUnsafe(`DELETE FROM public.clients WHERE id = $1`, oid);
+    return { ok: true, id: oid };
   }
 }
