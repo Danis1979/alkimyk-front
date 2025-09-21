@@ -146,7 +146,6 @@ export default function Purchases() {
               <th style={{ textAlign: 'left', padding: '10px 8px', fontWeight: 600, fontSize: 12, color: '#334155' }}>Fecha</th>
               <th style={{ textAlign: 'left', padding: '10px 8px', fontWeight: 600, fontSize: 12, color: '#334155' }}>Proveedor</th>
               <th style={{ textAlign: 'right', padding: '10px 8px', fontWeight: 600, fontSize: 12, color: '#334155' }}>Total</th>
-              <th style={{ textAlign: 'left', padding: '10px 8px', fontWeight: 600, fontSize: 12, color: '#334155' }}>Acciones</th>
             </tr>
           </thead>
           <tbody>
@@ -156,15 +155,11 @@ export default function Purchases() {
                 <td style={{ padding: '10px 8px' }}>{p.fecha ? new Date(p.fecha).toLocaleDateString('es-AR') : '—'}</td>
                 <td style={{ padding: '10px 8px' }}>{p.supplier || '—'}</td>
                 <td style={{ padding: '10px 8px', textAlign: 'right' }}>{fmtCurrency(p.total)}</td>
-                <td style={{ padding: '10px 8px' }}>
-                  {/* Cuando haya detalle de compra: cambiar a /purchases/:id */}
-                  <Link to={`/orders/${p.id}`} style={{ textDecoration: 'none' }}>Ver detalle →</Link>
-                </td>
               </tr>
             ))}
             {items.length === 0 && (
               <tr>
-                <td colSpan={5} style={{ padding: 16, color: '#64748b' }}>Sin resultados.</td>
+                <td colSpan={4} style={{ padding: 16, color: '#64748b' }}>Sin resultados.</td>
               </tr>
             )}
           </tbody>

@@ -1,144 +1,193 @@
 // src/services/production.service.js
 import { http } from '../lib/http';
 
-// Normaliza una OP del backend a un shape estable
-function normOP(x = {}) {
-  const id     = x.id ?? x.opId ?? x.ID ?? null;
-  const fecha  = x.fecha ?? x.date ?? x.createdAt ?? null;
-  const estado = x.estado ?? x.status ?? 'Planificada';
-  // items de salida (producto terminado)
-  const itemsProd = Array.isArray(x.itemsProd) ? x.itemsProd : (Array.isArray(x.prod) ? x.prod : []);
-  // consumos (insumos)
-  const consumos  = Array.isArray(x.consumos) ? x.consumos  : (Array.isArray(x.inputs) ? x.inputs : []);
+// ---------- Normalizadores ----------
+function normOP(x) {
+  if (!x || typeof x !== 'object') return null;
   return {
-    id, fecha, estado,
-    itemsProd: itemsProd.map(it => ({
-      productId: it.productId ?? it.id ?? it.itemId ?? null,
-      product:   it.product   ?? it.name ?? it.sku ?? '',
-      qty:       Number(it.qty ?? it.quantity ?? 0) || 0,
-    })),
-    consumos: consumos.map(it => ({
-      insumoId:  it.insumoId ?? it.productId ?? it.id ?? it.itemId ?? null,
-      insumo:    it.insumo   ?? it.product   ?? it.name ?? it.sku ?? '',
-      qty:       Number(it.qty ?? it.quantity ?? 0) || 0,
-    })),
+    id: x.id ?? x.ID ?? null,
+    fecha: x.fecha ?? x.date ?? null,
+    estado: x.estado ?? x.status ?? 'Planificada',
+    itemsProd: Array.isArray(x.itemsProd ?? x.productos ?? x.items)
+      ? (x.itemsProd ?? x.productos ?? x.items).map((i) => ({
+          productId: i.productId ?? i.id ?? null,
+          product: i.product ?? i.nombre ?? i.name ?? '',
+          qty: Number(i.qty ?? i.cantidad ?? 0),
+        }))
+      : [],
+    consumos: Array.isArray(x.consumos ?? x.insumos)
+      ? (x.consumos ?? x.insumos).map((i) => ({
+          insumoId: i.insumoId ?? i.productId ?? i.id ?? null,
+          insumo: i.insumo ?? i.nombre ?? i.name ?? '',
+          qty: Number(i.qty ?? i.cantidad ?? 0),
+        }))
+      : [],
     raw: x,
   };
 }
 
-// Búsqueda / listado de OPs con fallbacks de endpoint
+// Bases probables para producción
+const BASES = ['/production', '/production-orders', '/op', '/ops'];
+
+// ---------- Helpers HTTP con fallback ----------
+async function tryGet(path) {
+  let lastErr;
+  for (const b of BASES) {
+    try {
+      const { data } = await http.get(`${b}${path}`);
+      return { ok: true, data, base: b };
+    } catch (e) { lastErr = e; }
+  }
+  return { ok: false, err: lastErr };
+}
+
+async function tryPost(path, payload) {
+  let lastErr;
+  for (const b of BASES) {
+    try {
+      const { data } = await http.post(`${b}${path}`, payload);
+      return { ok: true, data, base: b };
+    } catch (e) { lastErr = e; }
+  }
+  return { ok: false, err: lastErr };
+}
+
+async function tryPatch(path, payload) {
+  let lastErr;
+  for (const b of BASES) {
+    try {
+      const { data } = await http.patch(`${b}${path}`, payload);
+      return { ok: true, data, base: b };
+    } catch (e) { lastErr = e; }
+  }
+  return { ok: false, err: lastErr };
+}
+
+// ---------- Búsqueda / listado ----------
 export async function searchProductionOrders({
-  page = 1, limit = 20, sort = '-fecha', estado, from, to, productId, q,
+  page = 1, limit = 20, sort = '-fecha', estado = '', from = '', to = '', productId = null, q = '',
 } = {}) {
   const qs = new URLSearchParams({ page: String(page), limit: String(limit) });
-  if (sort)      qs.set('sort', sort);
-  if (estado)    qs.set('estado', estado);
-  if (from)      qs.set('from', from);
-  if (to)        qs.set('to', to);
-  if (productId) qs.set('productId', String(productId));
-  if (q)         qs.set('q', q);
+  if (sort) qs.set('sort', sort);
+  if (estado) qs.set('estado', estado);
+  if (from) qs.set('from', from);
+  if (to) qs.set('to', to);
+  if (productId != null) qs.set('productId', String(productId));
+  if (q) qs.set('q', q);
 
-  const tries = [
-    `/production_orders/search?${qs.toString()}`,
-    `/production/orders/search?${qs.toString()}`,
-    `/production_orders?${qs.toString()}`,
-    `/production/orders?${qs.toString()}`,
-  ];
-
-  for (const url of tries) {
-    try {
-      const { data } = await http.get(url);
-      const arr = Array.isArray(data?.items) ? data.items : (Array.isArray(data) ? data : []);
-      return {
-        items: arr.map(normOP),
-        page : data?.page ?? page,
-        pages: data?.pages ?? (data?.total ? Math.max(1, Math.ceil(Number(data.total) / limit)) : undefined),
-        total: data?.total,
-        _debugTried: tries.slice(0, tries.indexOf(url) + 1),
-      };
-    } catch {}
+  // 1) endpoint paginado /search
+  let r = await tryGet(`/search?${qs.toString()}`);
+  if (r.ok) {
+    const arr = Array.isArray(r.data?.items) ? r.data.items : (Array.isArray(r.data) ? r.data : []);
+    return {
+      items: arr.map(normOP).filter(Boolean),
+      page: r.data?.page ?? page,
+      total: r.data?.total,
+      pages: r.data?.pages,
+      _base: r.base,
+    };
   }
-  return { items: [], page, pages: 1, total: 0 };
+
+  // 2) listado plano
+  r = await tryGet('');
+  if (r.ok) {
+    const arr = Array.isArray(r.data?.items) ? r.data.items : (Array.isArray(r.data) ? r.data : []);
+    const start = (page - 1) * limit;
+    const slice = arr.slice(start, start + limit);
+    return {
+      items: slice.map(normOP).filter(Boolean),
+      page,
+      total: arr.length,
+      pages: Math.max(1, Math.ceil(arr.length / limit)),
+      _base: r.base,
+    };
+  }
+
+  return { items: [], page, total: 0, pages: 1, _base: null };
 }
 
-// Detalle por ID
-export async function fetchProductionOrderById(id) {
-  const urls = [
-    `/production_orders/${id}/full`,
-    `/production/orders/${id}/full`,
-    `/production_orders/${id}`,
-    `/production/orders/${id}`,
-  ];
-  for (const u of urls) {
-    try { const { data } = await http.get(u); return normOP(data); } catch {}
-  }
-  return normOP({ id, itemsProd: [], consumos: [] });
-}
-
-// Alta de OP (Planificada)
+// ---------- Crear OP ----------
 export async function createProductionOrder(payload) {
-  // payload: { fecha, itemsProd:[{productId, qty}], consumos:[{insumoId, qty}] }
-  const tries = ['/production_orders', '/production/orders'];
-  for (const u of tries) {
-    try { const { data } = await http.post(u, payload); return normOP(data); } catch {}
-  }
-  throw new Error('No se pudo crear la OP');
+  // payload esperado: { fecha, itemsProd:[{productId, qty}], consumos:[{insumoId, qty}] }
+  const body = {
+    fecha: payload.fecha ?? payload.date ?? null,
+    itemsProd: (payload.itemsProd ?? []).map(i => ({
+      productId: i.productId ?? i.id,
+      qty: Number(i.qty ?? i.cantidad ?? 0),
+    })),
+    consumos: (payload.consumos ?? []).map(i => ({
+      insumoId: i.insumoId ?? i.productId ?? i.id,
+      qty: Number(i.qty ?? i.cantidad ?? 0),
+    })),
+  };
+  const r = await tryPost('', body);
+  if (!r.ok) throw r.err || new Error('No se pudo crear la OP');
+  return r.data;
 }
 
-// Acciones de estado (transiciones)
+// ---------- Acciones estado ----------
 export async function startProductionOrder(id) {
-  const tries = [
-    `/production_orders/${id}/start`,
-    `/production/orders/${id}/start`,
-    `/production_orders/${id}?accion=start`,
-  ];
-  for (const u of tries) { try { const { data } = await http.post(u); return normOP(data); } catch {} }
-  throw new Error('No se pudo iniciar la OP');
+  const r = await tryPatch(`/${id}/start`, {});
+  if (!r.ok) throw r.err || new Error('No se pudo iniciar la OP');
+  return r.data;
 }
-
 export async function closeProductionOrder(id) {
-  const tries = [
-    `/production_orders/${id}/close`,
-    `/production/orders/${id}/close`,
-    `/production_orders/${id}?accion=close`,
-  ];
-  for (const u of tries) { try { const { data } = await http.post(u); return normOP(data); } catch {} }
-  throw new Error('No se pudo cerrar la OP');
+  const r = await tryPatch(`/${id}/close`, {});
+  if (!r.ok) throw r.err || new Error('No se pudo cerrar la OP');
+  return r.data;
 }
-
 export async function cancelProductionOrder(id) {
-  const tries = [
-    `/production_orders/${id}/cancel`,
-    `/production/orders/${id}/cancel`,
-    `/production_orders/${id}?accion=cancel`,
-  ];
-  for (const u of tries) { try { const { data } = await http.post(u); return normOP(data); } catch {} }
-  throw new Error('No se pudo anular la OP');
+  const r = await tryPatch(`/${id}/cancel`, {});
+  if (!r.ok) throw r.err || new Error('No se pudo anular la OP');
+  return r.data;
 }
 
-// Obtener receta (BOM) por producto
+// ---------- Recetas (BOM) ----------
+const RECIPE_BASES = ['/recipes', '/bom', '/product-recipes'];
 export async function fetchRecipe(productId) {
-  if (!productId) return null;
-  const tries = [
-    `/recipes/${productId}`,
-    `/bom/${productId}`,
-    `/recipes?productId=${productId}`,
-  ];
-  for (const u of tries) {
+  const pid = Number(productId);
+  // Intento 1: /recipes/:productId
+  for (const b of RECIPE_BASES) {
     try {
-      const { data } = await http.get(u);
-      const componentes = Array.isArray(data?.componentes) ? data.componentes
-        : Array.isArray(data?.items) ? data.items : [];
-      return {
-        productId,
-        componentes: componentes.map(c => ({
-          insumoId: c.insumoId ?? c.productId ?? c.id ?? null,
-          insumo:   c.insumo   ?? c.product   ?? c.name ?? '',
-          qtyPorUnidad: Number(c.qtyPorUnidad ?? c.qty ?? 0) || 0,
-        })),
-        raw: data,
-      };
-    } catch {}
+      const { data } = await http.get(`${b}/${pid}`);
+      const comps = pickComponents(data);
+      comps.componentes = comps; // compat: permite usar arr o obj.componentes
+      return comps;
+    } catch (_) {}
   }
-  return null;
+  // Intento 2: /products/:id/recipe
+  try {
+    const { data } = await http.get(`/products/${pid}/recipe`);
+    const comps = pickComponents(data);
+    comps.componentes = comps;
+    return comps;
+  } catch (_) {}
+
+  // Intento 3: /recipes?productId=...
+  try {
+    const qs = new URLSearchParams({ productId: String(pid) }).toString();
+    const { data } = await http.get(`/recipes?${qs}`);
+    const comps = pickComponents(data);
+    comps.componentes = comps;
+    return comps;
+  } catch (_) {}
+
+  const empty = [];
+  empty.componentes = empty;
+  return empty;
+}
+
+function pickComponents(data) {
+  // Acepta {componentes:[...]}, {items:[...]}, array plano, etc.
+  const raw =
+    (Array.isArray(data?.componentes) && data.componentes) ||
+    (Array.isArray(data?.items) && data.items) ||
+    (Array.isArray(data) && data) ||
+    [];
+
+  return raw.map((c) => ({
+    insumoId: c.insumoId ?? c.productId ?? c.id ?? null,
+    insumo: c.insumo ?? c.nombre ?? c.name ?? c.product ?? '',
+    qtyPorUnidad: Number(c.qtyPorUnidad ?? c.qty ?? c.cantidad ?? 0),
+  }));
 }

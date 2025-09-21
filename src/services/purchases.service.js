@@ -1,43 +1,40 @@
-// src/services/purchases.service.js
 import { http } from '../lib/http';
 
-// Normaliza filas de listados
-function normPurchase(r) {
+// Normalizador compra
+function normPurchase(x) {
   return {
-    id: r.id,
-    fecha: r.fecha ?? r.date ?? null,
-    supplier: r.supplier ?? r.proveedor ?? r.supplierName ?? r.vendor ?? '',
-    total: r.total ?? r.subtotal ?? 0,
-    raw: r,
+    id: x.id ?? x.ID ?? null,
+    fecha: x.fecha ?? x.date ?? null,
+    supplierId: x.supplierId ?? x.proveedorId ?? x.vendorId ?? null,
+    supplier: x.supplier ?? x.proveedor ?? x.vendor ?? x.supplierName ?? '',
+    total: x.total ?? x.subtotal ?? 0,
+    items: Array.isArray(x.items) ? x.items : [],
+    raw: x,
   };
 }
 
-// Normaliza un detalle (header + items)
-function normPurchaseDetail(x) {
-  const header = {
-    id: x.id,
-    fecha: x.fecha ?? x.date ?? null,
-    supplier: x.supplier ?? x.proveedor ?? x.supplierName ?? '',
-    pm: x.pm ?? x.medioPago ?? '',
-    estado: x.estado ?? x.status ?? '',
-    subtotal: x.subtotal ?? x.total ?? 0,
-    iva: x.iva ?? 0,
-    total: x.total ?? x.subtotal ?? 0,
-  };
-  const items = Array.isArray(x.items)
-    ? x.items.map((i) => {
-        const qty = i.qty ?? i.cantidad ?? 0;
-        const price = i.price ?? i.precio ?? 0;
-        return {
-          productId: i.productId ?? i.insumoId ?? null,
-          product: i.product ?? i.insumo ?? i.name ?? '',
-          qty,
-          price,
-          lineTotal: qty * price,
-        };
-      })
-    : [];
-  return { ...header, items, raw: x };
+const BASES = ['/purchases', '/compras'];
+
+async function tryGet(path) {
+  let lastErr;
+  for (const b of BASES) {
+    try {
+      const { data } = await http.get(`${b}${path}`);
+      return { ok: true, data, base: b };
+    } catch (e) { lastErr = e; }
+  }
+  return { ok: false, err: lastErr };
+}
+
+async function tryPost(path, payload) {
+  let lastErr;
+  for (const b of BASES) {
+    try {
+      const { data } = await http.post(`${b}${path}`, payload);
+      return { ok: true, data, base: b };
+    } catch (e) { lastErr = e; }
+  }
+  return { ok: false, err: lastErr };
 }
 
 export async function searchPurchases({ page = 1, limit = 20, sort = '-fecha', from, to, q } = {}) {
@@ -47,38 +44,43 @@ export async function searchPurchases({ page = 1, limit = 20, sort = '-fecha', f
   if (to)   qs.set('to', to);
   if (q)    qs.set('q', q);
 
-  try {
-    const { data } = await http.get(`/purchases/search?${qs.toString()}`);
-    const items = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
+  // 1) /search
+  let r = await tryGet(`/search?${qs.toString()}`);
+  if (r.ok) {
+    const arr = Array.isArray(r.data?.items) ? r.data.items : Array.isArray(r.data) ? r.data : [];
     return {
-      items: items.map(normPurchase),
-      page: data?.page ?? page,
-      pages: data?.pages ?? (data?.total ? Math.max(1, Math.ceil(data.total / limit)) : undefined),
-      total: data?.total,
+      items: arr.map(normPurchase),
+      page: r.data?.page ?? page,
+      pages: r.data?.pages ?? (r.data?.total ? Math.max(1, Math.ceil(r.data.total / limit)) : undefined),
+      total: r.data?.total,
+      _base: r.base,
     };
-  } catch {
-    try {
-      const { data } = await http.get(`/purchases?${qs.toString()}`);
-      const items = Array.isArray(data) ? data : [];
-      return { items: items.map(normPurchase), page, pages: undefined, total: undefined };
-    } catch {
-      return { items: [], page, pages: undefined, total: undefined };
-    }
   }
+
+  // 2) listado plano
+  r = await tryGet('');
+  if (r.ok) {
+    const arr = Array.isArray(r.data?.items) ? r.data.items : Array.isArray(r.data) ? r.data : [];
+    const start = (page - 1) * limit;
+    const slice = arr.slice(start, start + limit);
+    return { items: slice.map(normPurchase), page, total: arr.length, pages: Math.max(1, Math.ceil(arr.length / limit)), _base: r.base };
+  }
+
+  return { items: [], page, total: 0, pages: 1, _base: null };
 }
 
 export async function fetchPurchaseById(id) {
-  const urls = [`/purchases/${id}/full`, `/purchases/${id}`];
+  const urls = [`/purchases/${id}/full`, `/purchases/${id}`, `/compras/${id}/full`, `/compras/${id}`];
   for (const u of urls) {
-    try {
-      const { data } = await http.get(u);
-      if (data) return normPurchaseDetail(data);
-    } catch (_) {}
+    try { const { data } = await http.get(u); return data; } catch (_) {}
   }
-  return { id, fecha: null, supplier: '', pm: '', estado: '', items: [], subtotal: 0, iva: 0, total: 0 };
+  return { id, items: [] };
 }
 
 export async function createPurchase(payload) {
-  const { data } = await http.post('/purchases', payload);
-  return data;
+  // payload: { supplierId, supplier, fecha, pm, estado, items:[{productId|insumoId, qty, price}], subtotal, iva, total }
+  const body = { ...payload };
+  const r = await tryPost('', body);
+  if (!r.ok) throw r.err || new Error('No se pudo crear la compra');
+  return r.data;
 }
