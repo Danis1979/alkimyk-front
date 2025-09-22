@@ -4,7 +4,7 @@ import { useSearchParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { fetchOrders } from '../services/orders.service';
 import { fmtCurrency } from '../lib/format';
-
+import { fetchOrders } from '../services/orders.service'; // alias ya exportado
 function Label({ children }) {
   return (
     <span style={{ fontSize: 12, color: '#475569', display: 'block', marginBottom: 4 }}>
