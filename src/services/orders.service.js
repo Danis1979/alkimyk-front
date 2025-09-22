@@ -48,3 +48,5 @@ export async function fetchOrderById(id) {
   const { data } = await http.get(`/orders/${id}`);
   return data;
 }
+// Back-compat: algunas pantallas siguen importando fetchOrders
+export const fetchOrders = searchOrders;
