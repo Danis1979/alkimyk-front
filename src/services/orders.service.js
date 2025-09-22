@@ -84,5 +84,48 @@ export async function fetchOrderById(id) {
   return data;
 }
 
+/**
+ * Crea un pedido (POST /orders)
+ * body esperado:
+ * {
+ *   clientEmail?: string,
+ *   clientName?: string,
+ *   date?: 'YYYY-MM-DD',
+ *   notes?: string,
+ *   items: Array&lt;{ productId: string|number, qty: number, price: number }&gt;
+ * }
+ * Devuelve el objeto creado (con id).
+ */
+export async function createOrder({
+  clientEmail,
+  clientName,
+  date,
+  notes,
+  items,
+}) {
+  const payload = {
+    clientEmail: clientEmail || undefined,
+    clientName: clientName || undefined,
+    date: date || undefined,
+    notes: notes || undefined,
+    items: Array.isArray(items)
+      ? items.map(it => ({
+          productId: it.productId,
+          qty: Number(it.qty) || 0,
+          price: Number(it.price) || 0,
+        }))
+      : [],
+  };
+
+  // Primero intento el endpoint nuevo
+  try {
+    const { data } = await http.post('/orders', payload);
+    return data;
+  } catch (e) {
+    // Si el backend no tiene /orders POST aún, dejamos propagar el error
+    // (o acá podríamos intentar un fallback si existiera /sales)
+    throw e;
+  }
+}
 // Back-compat: algunas pantallas siguen importando fetchOrders
 export const fetchOrders = searchOrders;

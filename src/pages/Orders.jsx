@@ -91,6 +91,18 @@ export default function Orders() {
         <span style={{ fontSize: 12, color: '#64748b' }}>
           {isFetching ? 'Actualizando…' : `Mostrando ${items.length} de ${total} (pág. ${page}/${pages})`}
         </span>
+        <Link
+          to="/sales/new"
+          style={{
+            textDecoration: 'none',
+            border: '1px solid #cbd5e1',
+            borderRadius: 8,
+            padding: '8px 10px',
+            background: '#fff',
+          }}
+        >
+          + Nuevo pedido
+        </Link>
       </div>
 
       {/* Filtros */}
@@ -263,6 +275,7 @@ export default function Orders() {
                   Cliente {sort === 'client' ? '↑' : sort === '-client' ? '↓' : ''}
                 </button>
               </th>
+              <th style={{ padding: '10px 12px' }}>Estado</th>
               <th style={{ padding: '10px 12px', textAlign: 'right' }}>
                 <button
                   type="button"
@@ -281,6 +294,33 @@ export default function Orders() {
                 <td style={{ padding: '10px 12px' }}>{o.id}</td>
                 <td style={{ padding: '10px 12px' }}>{fmtDate(o.date)}</td>
                 <td style={{ padding: '10px 12px' }}>{o.client}</td>
+                <td style={{ padding: '10px 12px' }}>
+                  {(() => {
+                    const st = (o.raw?.status ?? o.status ?? '').toString().toUpperCase();
+                    if (!st) return '—';
+                    const styles =
+                      ({
+                        PENDIENTE: { bg: '#f1f5f9', color: '#334155', border: '#cbd5e1' },
+                        CONFIRMADO: { bg: '#ecfeff', color: '#155e75', border: '#a5f3fc' },
+                        FACTURADO: { bg: '#f0fdf4', color: '#166534', border: '#bbf7d0' },
+                        CANCELADO: { bg: '#fef2f2', color: '#991b1b', border: '#fecaca' },
+                      }[st]) || { bg: '#f8fafc', color: '#475569', border: '#e2e8f0' };
+                    return (
+                      <span
+                        style={{
+                          fontSize: 12,
+                          padding: '2px 8px',
+                          borderRadius: 999,
+                          border: `1px solid ${styles.border}`,
+                          background: styles.bg,
+                          color: styles.color,
+                        }}
+                      >
+                        {st}
+                      </span>
+                    );
+                  })()}
+                </td>
                 <td style={{ padding: '10px 12px', textAlign: 'right' }}>{formatARS(o.total)}</td>
                 <td style={{ padding: '10px 12px' }}>
                   <Link to={`/orders/${o.id}`} style={{ textDecoration: 'none' }}>
@@ -291,7 +331,7 @@ export default function Orders() {
             ))}
             {!isLoading && rows.length === 0 && (
               <tr>
-                <td colSpan={5} style={{ padding: '12px' }}>
+                <td colSpan={6} style={{ padding: '12px' }}>
                   Sin resultados
                 </td>
               </tr>
