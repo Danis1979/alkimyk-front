@@ -1,0 +1,158 @@
+== Estructura del front ==
+.
+├── .bk
+│   ├── App.jsx.1757857933
+│   ├── Orders.jsx.1757858271
+│   └── main.jsx.1757857943
+├── .env
+├── .env.production
+├── .gitignore
+├── README.md
+├── front-structure.txt
+├── index.html
+├── index.html.bak
+├── js
+│   ├── controllers
+│   │   └── README.md
+│   ├── main.js
+│   ├── services
+│   │   └── README.md
+│   ├── ui
+│   │   └── README.md
+│   └── utils
+│       └── README.md
+├── package-lock 2.json
+├── package-lock 3.json
+├── package-lock.json
+├── package.json
+├── public
+│   └── _redirects
+├── src
+│   ├── App.jsx
+│   ├── App.jsx.bak
+│   ├── App.jsx.bak.1757930163
+│   ├── App.jsx.bak.1757930369
+│   ├── App.jsx.bak.1757931666
+│   ├── App.jsx.bak.1757933191
+│   ├── App.jsx.bak.1758315918
+│   ├── App.jsx.save
+│   ├── clients
+│   │   ├── clients.controller.ts
+│   │   └── clients.module.ts
+│   ├── components
+│   │   ├── ClientTypeahead.jsx
+│   │   ├── CsvMeta.jsx
+│   │   ├── ErrorBoundary.jsx
+│   │   ├── KpiStrip.jsx
+│   │   ├── MiniBars.jsx
+│   │   ├── Modal.jsx
+│   │   ├── Nav.jsx
+│   │   ├── Nav.jsx.bak
+│   │   ├── NavBar.jsx
+│   │   ├── ProductTypeahead.jsx
+│   │   ├── RangeControls.jsx
+│   │   ├── ReceivablesKpis.jsx
+│   │   ├── Sparkline.jsx
+│   │   ├── StatCard.jsx
+│   │   └── SupplierTypeahead.jsx
+│   ├── hooks
+│   │   ├── useOrders.js
+│   │   └── useSortParam.js
+│   ├── index.css
+│   ├── layouts
+│   │   └── MainLayout.jsx
+│   ├── lib
+│   │   ├── api.js
+│   │   ├── date.js
+│   │   ├── format.js
+│   │   ├── http.js
+│   │   └── normalizeList.js
+│   ├── main.jsx
+│   ├── main.jsx.bak
+│   ├── main.jsx.bak.1757856687
+│   ├── main.jsx.bak.1757856730
+│   ├── main.jsx.bak.1757930678
+│   ├── pages
+│   │   ├── Cheques.jsx
+│   │   ├── Cxc.jsx
+│   │   ├── Dashboard.jsx
+│   │   ├── Dashboard.jsx.bak.1757938812
+│   │   ├── Dashboard.jsx.bak.1757939060
+│   │   ├── Dashboard.jsx.bak.1757939357
+│   │   ├── Dashboard.jsx.bak.1757940211
+│   │   ├── Dashboard.jsx.bak.1757940486
+│   │   ├── Inventory.jsx
+│   │   ├── Masters.jsx
+│   │   ├── MastersClients.jsx
+│   │   ├── MastersProducts.jsx
+│   │   ├── MastersSuppliers.jsx
+│   │   ├── NotFound.jsx
+│   │   ├── Ops.jsx
+│   │   ├── OrderDetail.jsx
+│   │   ├── Orders.jsx
+│   │   ├── Orders.jsx.bak.1758234195
+│   │   ├── OrdersPage.jsx
+│   │   ├── Production.jsx
+│   │   ├── ProductionNew.jsx
+│   │   ├── PurchaseDetail.jsx
+│   │   ├── Purchases.jsx
+│   │   ├── PurchasesNew.jsx
+│   │   ├── Receivables.jsx
+│   │   ├── Reports.jsx
+│   │   ├── Sales.jsx
+│   │   ├── Sales.jsx.bak.1758319993
+│   │   ├── SalesNew.jsx
+│   │   ├── SalesNew.jsx.bak.1758321811
+│   │   └── masters
+│   │       ├── Clients.jsx
+│   │       ├── Prices.jsx
+│   │       ├── Products.jsx
+│   │       ├── Suppliers.jsx
+│   │       └── Uom.jsx
+│   ├── products
+│   │   └── products.controller.ts
+│   ├── services
+│   │   ├── api.js
+│   │   ├── cheques.service.js
+│   │   ├── clients.service.js
+│   │   ├── example.service.js
+│   │   ├── index.js
+│   │   ├── inventory.service.js
+│   │   ├── orders.service.js
+│   │   ├── orders.service.js.bak.1758375969
+│   │   ├── orders.service.js.bak.1758376032
+│   │   ├── prices.service.js
+│   │   ├── production.service.js
+│   │   ├── products.service.js
+│   │   ├── purchases.service.js
+│   │   ├── sales.service.js
+│   │   ├── suppliers.service.js
+│   │   └── uom.service.js
+│   ├── suppliers
+│   │   ├── suppliers.controller.ts
+│   │   └── suppliers.module.ts
+│   └── utils
+│       └── format.js
+├── styles
+│   └── tailwind.css
+├── tsconfig.json
+├── vite.config.js
+└── vite.config.mjs
+
+21 directories, 118 files
+
+== package.json (name/version/scripts) ==
+{
+  "name": "alkimyk-front",
+  "version": "1.0.0",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  }
+}
+
+== .env* (nombres de archivos) ==
+.env
+.env.production

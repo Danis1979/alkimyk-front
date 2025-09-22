@@ -1,106 +1,47 @@
 // src/services/sales.service.js
 import { http } from '../lib/http';
+import { fetchOrderById } from './orders.service';
 
-// Normaliza campos posibles del backend: fecha/date, client/cliente, total/subtotal
-function normSale(s) {
+// Busca “ventas” usando el search de órdenes con un status típico de facturado/confirmado.
+// En el fallback legacy, el status se ignora y te devuelve todo igual (está ok por ahora).
+export async function searchSales({
+  page = 1,
+  limit = 20,
+  from,
+  to,
+  clientEmail,
+} = {}) {
+  const skip = Math.max(0, (page - 1) * limit);
+  const qs = new URLSearchParams({ skip: String(skip), take: String(limit) });
+
+  // status por ahora fijo en CONFIRMADO como aproximación de “ventas”
+  qs.set('status', 'CONFIRMADO');
+  if (from) qs.set('date_from', from);
+  if (to) qs.set('date_to', to);
+  if (clientEmail) qs.set('clientEmail', clientEmail);
+
+  const { data } = await http.get(`/orders/search?${qs.toString()}`);
+
+  const items = Array.isArray(data?.items) ? data.items : [];
   return {
-    id: s.id,
-    fecha: s.fecha ?? s.date ?? null,
-    client: s.client ?? s.cliente ?? s.clientName ?? s.customer ?? '',
-    total: s.total ?? s.subtotal ?? 0,
-    raw: s,
+    items: items.map((o) => ({
+      id: o.id,
+      date: o.createdAt ?? o.date ?? null,
+      client:
+        typeof o.client === 'string'
+          ? o.client
+          : o.client?.name ?? o.client?.email ?? '',
+      total: typeof o.subtotal === 'number' ? o.subtotal : (o.total ?? 0),
+      raw: o,
+    })),
+    total: data?.total ?? items.length,
+    page,
+    pages: Math.max(1, Math.ceil((data?.total ?? items.length) / limit)),
   };
 }
 
-function buildQS({ page = 1, limit = 20, sort, from, to, q }) {
-  const qs = new URLSearchParams({ page: String(page), limit: String(limit) });
-  if (sort) qs.set('sort', sort);
-  if (from) qs.set('from', from);
-  if (to)   qs.set('to', to);
-  if (q)    qs.set('q', q);
-  return qs;
-}
-
-// Mapea el campo de orden según el endpoint (orders usa "date")
-function mapSortFor(endpoint, sort) {
-  if (!sort) return sort;
-  const isDesc = sort.startsWith('-');
-  const key = isDesc ? sort.slice(1) : sort;
-  let mapped = key;
-
-  if (endpoint === 'orders') {
-    if (key === 'fecha') mapped = 'date';
-  }
-  // para sales dejamos "fecha" tal cual; "total" sirve en ambos
-
-  return isDesc ? `-${mapped}` : mapped;
-}
-
-function shapeResult({ data, page, limit }) {
-  // data puede ser {items, total, pages, page} o un array plano
-  const itemsRaw = Array.isArray(data?.items) ? data.items : (Array.isArray(data) ? data : []);
-  const items = itemsRaw.map(normSale);
-
-  const total = (typeof data?.total === 'number') ? data.total
-               : (Array.isArray(data) ? data.length : undefined);
-
-  const pages = (typeof data?.pages === 'number') ? data.pages
-               : (typeof total === 'number' ? Math.max(1, Math.ceil(total / limit)) : undefined);
-
-  const hasNext = (typeof pages === 'number') ? (page < pages) : (items.length === limit);
-
-  return {
-    items,
-    page: data?.page ?? page,
-    pages,
-    total,
-    hasNext,
-  };
-}
-
-// Principal: intenta /sales/search y cae a /orders/search
-export async function searchSales({ page = 1, limit = 20, sort = '-fecha', from, to, q } = {}) {
-  // 1) /sales/search
-  try {
-    const qs = buildQS({ page, limit, sort: mapSortFor('sales', sort), from, to, q });
-    const { data } = await http.get(`/sales/search?${qs.toString()}`);
-    return shapeResult({ data, page, limit });
-  } catch (_) {
-    // sigue al fallback
-  }
-
-  // 2) Fallback: /orders/search (usa "date" en sort)
-  const qs2 = buildQS({ page, limit, sort: mapSortFor('orders', sort), from, to, q });
-  const { data } = await http.get(`/orders/search?${qs2.toString()}`);
-  return shapeResult({ data, page, limit });
-}
-
-// Alias por compatibilidad con componentes que importen fetchSales
-export async function fetchSales(args) {
-  return searchSales(args);
-}
-
-// Detalle: intenta /sales/:id[/full] y cae a /orders/:id
+// Hasta que exista /sales/:id, usamos el detalle de order como “detalle de venta”
+export function fetchOrders(opts) { return searchOrders(opts); }
 export async function fetchSaleById(id) {
-  const urls = [`/sales/${id}/full`, `/sales/${id}`];
-  for (const u of urls) {
-    try {
-      const { data } = await http.get(u);
-      return data;
-    } catch (_) {}
-  }
-  // Fallback a orders
-  const ordersUrls = [`/orders/${id}/full`, `/orders/${id}`];
-  for (const u of ordersUrls) {
-    try {
-      const { data } = await http.get(u);
-      return data;
-    } catch (_) {}
-  }
-  return { id, items: [] };
-}
-
-export async function createSale(payload) {
-  const { data } = await http.post('/sales', payload);
-  return data;
+  return fetchOrderById(id);
 }
