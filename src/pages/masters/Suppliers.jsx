@@ -64,7 +64,7 @@ export default function Suppliers() {
       </div>
 
       {isError && <div style={{ color: '#b91c1c', marginBottom: 8 }}>Error: {String(error?.message || error)}</div>}
-      {isLoading && <div style={{ color: '#475569', marginBottom: 8' }}>Cargando…</div>}
+      {isLoading && <div style={{ color: '#475569', marginBottom: 8 }}>Cargando…</div>}
 
       <div style={{ overflowX: 'auto', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8 }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
