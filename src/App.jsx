@@ -1,6 +1,6 @@
 // src/App.jsx
-import Nav from './components/Nav.jsx';
 import { Routes, Route, Navigate } from 'react-router-dom';
+import Nav from './components/Nav.jsx';
 
 import Dashboard from './pages/Dashboard.jsx';
 import Orders from './pages/Orders.jsx';
