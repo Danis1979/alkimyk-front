@@ -1,10 +1,6 @@
+// src/services/orders.service.js
 import { http } from '../lib/http';
 
-/**
- * Busca pedidos/ventas con normalización para la tabla.
- * Soporta filtros: from/to (YYYY-MM-DD), status, clientEmail, page/limit.
- * Devuelve: { items:[{id,date,client,total,raw}], total, page, pages }
- */
 export async function searchOrders({
   page = 1,
   limit = 20,
@@ -24,10 +20,13 @@ export async function searchOrders({
 
   const items = Array.isArray(data?.items) ? data.items : [];
   return {
-    items: items.map(o => ({
+    items: items.map((o) => ({
       id: o.id,
       date: o.createdAt ?? o.date ?? null,
-      client: o.client ?? '',
+      client:
+        typeof o.client === 'string'
+          ? o.client
+          : o.client?.name ?? o.client?.email ?? '',
       total: typeof o.subtotal === 'number' ? o.subtotal : (o.total ?? 0),
       raw: o,
     })),
@@ -37,18 +36,15 @@ export async function searchOrders({
   };
 }
 
-/** Compat: para imports viejos que esperan fetchOrdersSearch */
-export { searchOrders as fetchOrdersSearch };
-
-/**
- * Detalle de pedido: intenta /orders/:id/full y cae a /orders/:id
- */
 export async function fetchOrderById(id) {
+  // primero intento "full"
   try {
     const { data } = await http.get(`/orders/${id}/full`);
-    return data;
-  } catch (_e) {
-    const { data } = await http.get(`/orders/${id}`);
-    return data;
+    if (data) return data;
+  } catch (_) {
+    // ignore y seguimos al fallback
   }
+  // fallback simple
+  const { data } = await http.get(`/orders/${id}`);
+  return data;
 }
