@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { fetchOrdersSearch } from '../services/orders.service';
+import { searchOrders as fetchOrdersSearch } from '../services/orders.service';
 import { useSortParam } from '../hooks/useSortParam';
 
 function fmtARS(n){ return new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS',maximumFractionDigits:0}).format(n??0) }
