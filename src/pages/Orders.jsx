@@ -1,6 +1,6 @@
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { searchOrders as fetchOrdersSearch } from '../services/orders.service';
 import { useSortParam } from '../hooks/useSortParam';
 import { formatARS } from '../utils/format';
@@ -13,15 +13,43 @@ function fmtDate(iso) {
   }
 }
 
+function ymd(d) {
+  try {
+    return d.toISOString().slice(0, 10);
+  } catch {
+    return '';
+  }
+}
+
 export default function Orders() {
+  const [params, setParams] = useSearchParams();
   const { sort, toggle } = useSortParam();
 
   // Filtros + paginación
-  const [page, setPage] = useState(1);
-  const [from, setFrom] = useState('');
-  const [to, setTo] = useState('');
-  const [status, setStatus] = useState('');
-  const [clientEmail, setClientEmail] = useState('');
+  const [page, setPage] = useState(() => Number(params.get('page') || 1));
+  const [from, setFrom] = useState(() => params.get('from') || '');
+  const [to, setTo] = useState(() => params.get('to') || '');
+  const [status, setStatus] = useState(() => params.get('status') || '');
+  const [clientEmail, setClientEmail] = useState(() => params.get('clientEmail') || '');
+
+  useEffect(() => {
+    const next = new URLSearchParams();
+    if (page > 1) next.set('page', String(page));
+    if (from) next.set('from', from);
+    if (to) next.set('to', to);
+    if (status) next.set('status', status);
+    if (clientEmail) next.set('clientEmail', clientEmail);
+    setParams(next, { replace: true });
+  }, [page, from, to, status, clientEmail, setParams]);
+
+  const setRangeDays = (days) => {
+    const end = new Date();
+    const start = new Date();
+    start.setDate(end.getDate() - (days - 1));
+    setFrom(ymd(start));
+    setTo(ymd(end));
+    setPage(1);
+  };
 
   const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
     queryKey: ['orders.search', { page, from, to, status, clientEmail }],
@@ -99,12 +127,17 @@ export default function Orders() {
         </div>
         <div>
           <div style={{ fontSize: 12, color: '#475569', marginBottom: 4 }}>Estado</div>
-          <input
-            placeholder="ej. CONFIRMADO"
+          <select
             value={status}
             onChange={(e) => setStatus(e.target.value)}
-            style={{ width: '100%', padding: 8, border: '1px solid #cbd5e1', borderRadius: 6 }}
-          />
+            style={{ width: '100%', padding: 8, border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff' }}
+          >
+            <option value="">(todos)</option>
+            <option value="PENDIENTE">PENDIENTE</option>
+            <option value="CONFIRMADO">CONFIRMADO</option>
+            <option value="FACTURADO">FACTURADO</option>
+            <option value="CANCELADO">CANCELADO</option>
+          </select>
         </div>
         <div>
           <div style={{ fontSize: 12, color: '#475569', marginBottom: 4 }}>E-mail cliente</div>
@@ -117,12 +150,37 @@ export default function Orders() {
         </div>
         <div>
           <div style={{ fontSize: 12, color: '#475569', marginBottom: 4 }}>Acciones</div>
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {/* RANGOS RÁPIDOS */}
+            <button
+              type="button"
+              onClick={() => setRangeDays(1)}
+              style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '6px 8px', background: '#fff' }}
+              title="Hoy"
+            >
+              Hoy
+            </button>
+            <button
+              type="button"
+              onClick={() => setRangeDays(7)}
+              style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '6px 8px', background: '#fff' }}
+              title="Últimos 7 días"
+            >
+              7 días
+            </button>
+            <button
+              type="button"
+              onClick={() => setRangeDays(30)}
+              style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '6px 8px', background: '#fff' }}
+              title="Últimos 30 días"
+            >
+              30 días
+            </button>
+            {/* APLICAR / LIMPIAR */}
             <button
               type="button"
               onClick={() => {
                 setPage(1);
-                refetch();
               }}
               style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '8px 10px', background: '#fff' }}
             >
@@ -136,7 +194,6 @@ export default function Orders() {
                 setStatus('');
                 setClientEmail('');
                 setPage(1);
-                refetch();
               }}
               style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '8px 10px', background: '#fff' }}
             >
@@ -222,12 +279,12 @@ export default function Orders() {
             {rows.map((o) => (
               <tr key={o.id} style={{ borderTop: '1px solid #e2e8f0' }}>
                 <td style={{ padding: '10px 12px' }}>{o.id}</td>
-                <td style={{ padding: '10px 12px' }}>{fmtDate(o.date || o.dateKey)}</td>
+                <td style={{ padding: '10px 12px' }}>{fmtDate(o.date)}</td>
                 <td style={{ padding: '10px 12px' }}>{o.client}</td>
                 <td style={{ padding: '10px 12px', textAlign: 'right' }}>{formatARS(o.total)}</td>
                 <td style={{ padding: '10px 12px' }}>
                   <Link to={`/orders/${o.id}`} style={{ textDecoration: 'none' }}>
-                    ver
+                    Ver detalle →
                   </Link>
                 </td>
               </tr>

@@ -2,7 +2,7 @@
 import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { fetchOrderById } from '../services/orders.service';
-import { fmtCurrency } from '../lib/format';
+import { formatARS } from '../utils/format';
 import { useState, useMemo } from 'react';
 
 function Label({ children }) {
@@ -18,9 +18,26 @@ function normalizeDetail(raw) {
   if (!raw) return { id: null, date: null, client: '', total: 0, items: [], _origin: 'unknown', _raw: raw };
 
   const id = raw.id ?? raw.orderId ?? null;
-  const date = raw.fecha ?? raw.date ?? null;
-  const client = raw.client ?? raw.cliente ?? raw.clientName ?? raw.customer ?? '';
+  const date = raw.createdAt ?? raw.fecha ?? raw.date ?? null;
+
+  const client =
+    typeof raw.client === 'string'
+      ? raw.client
+      : raw.client?.name ?? raw.cliente ?? raw.clientName ?? raw.customer ?? '';
+
   const total = Number(raw.total ?? raw.grandTotal ?? raw.subtotal ?? 0);
+
+  const status =
+    (raw.status ?? raw.estado ?? raw.state ?? '')
+      ? String(raw.status ?? raw.estado ?? raw.state).toUpperCase()
+      : undefined;
+
+  const notes = raw.notes ?? raw.notas ?? raw.observaciones ?? raw.observations ?? undefined;
+
+  const clientEmail =
+    typeof raw.client === 'object' && raw.client !== null
+      ? (raw.client.email ?? raw.client.mail ?? undefined)
+      : (raw.clientEmail ?? raw.email ?? undefined);
 
   // Ítems posibles: .items (final), .lines, .detalle, etc.
   const list =
@@ -33,17 +50,16 @@ function normalizeDetail(raw) {
     const qty = Number(it.qty ?? it.quantity ?? it.cantidad ?? 0);
     const price = Number(it.price ?? it.precio ?? it.unitPrice ?? 0);
 
-    // 👇 Evitamos mezclar ?? con ||: resolvemos el fallback en una variable
     const prodFallback =
       (it.productId != null ? `#${it.productId}` :
        it.insumoId  != null ? `#${it.insumoId}`  :
        `Ítem ${idx + 1}`);
 
+    const prodData = it.product ?? it.productName ?? it.name ?? it.producto ?? null;
     const prod =
-      it.product ??
-      it.productName ??
-      it.name ??
-      prodFallback;
+      typeof prodData === 'object' && prodData !== null
+        ? (prodData.name ?? prodData.sku ?? prodFallback)
+        : (prodData ?? prodFallback);
 
     return {
       key: it.id ?? `${idx}`,
@@ -57,19 +73,27 @@ function normalizeDetail(raw) {
   const hasStructuredItems = items.some(i => i.qty > 0 || i.price > 0);
   const _origin = hasStructuredItems ? 'full' : 'legacy';
 
-  return { id, date, client, total, items, _origin, _raw: raw };
+  return { id, date, client, clientEmail, status, notes, total, items, _origin, _raw: raw };
 }
 
 export default function OrderDetail() {
   const { id } = useParams();
   const [showJson, setShowJson] = useState(false);
 
-  const { data, isLoading, isError, error } = useQuery({
+  const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
     queryKey: ['orders.detail', id],
     queryFn: () => fetchOrderById(id),
   });
 
   const view = useMemo(() => normalizeDetail(data), [data]);
+
+  const itemsSum = useMemo(
+    () =>
+      Array.isArray(view.items)
+        ? view.items.reduce((acc, it) => acc + (Number(it.lineTotal) || 0), 0)
+        : 0,
+    [view.items]
+  );
 
   return (
     <div style={{ maxWidth: 980, margin: '0 auto' }}>
@@ -78,7 +102,7 @@ export default function OrderDetail() {
           Pedido / Venta #{view.id ?? id}
         </h1>
         <Link
-          to="/sales"
+          to="/orders"
           style={{
             textDecoration: 'none',
             border: '1px solid #cbd5e1',
@@ -87,7 +111,7 @@ export default function OrderDetail() {
             background: '#fff',
           }}
         >
-          ← Volver a ventas
+          ← Volver a pedidos
         </Link>
       </div>
 
@@ -113,7 +137,7 @@ export default function OrderDetail() {
             <div
               style={{
                 display: 'grid',
-                gridTemplateColumns: '1fr 1fr 1fr 1fr',
+                gridTemplateColumns: '1fr 1fr 1fr 1fr 1fr',
                 gap: 12,
                 alignItems: 'end',
               }}
@@ -130,13 +154,53 @@ export default function OrderDetail() {
               </div>
               <div>
                 <Label>Cliente</Label>
-                <div style={{ color: '#0f172a' }}>{view.client || '—'}</div>
+                <div style={{ color: '#0f172a' }}>
+                  {view.client || '—'}
+                  {view.clientEmail && (
+                    <div style={{ fontSize: 12, color: '#64748b' }}>{view.clientEmail}</div>
+                  )}
+                </div>
+              </div>
+              <div>
+                <Label>Estado</Label>
+                <div>
+                  {view.status ? (
+                    <span
+                      style={{
+                        padding: '2px 8px',
+                        borderRadius: 999,
+                        border: '1px solid #cbd5e1',
+                        background:
+                          String(view.status).includes('PEND') ? '#fff7ed'
+                          : String(view.status).includes('CANCEL') ? '#fee2e2'
+                          : '#f0fdf4',
+                        color:
+                          String(view.status).includes('PEND') ? '#9a3412'
+                          : String(view.status).includes('CANCEL') ? '#991b1b'
+                          : '#166534',
+                        fontSize: 12,
+                        fontWeight: 600,
+                      }}
+                    >
+                      {view.status}
+                    </span>
+                  ) : (
+                    <span style={{ color: '#64748b' }}>—</span>
+                  )}
+                </div>
               </div>
               <div>
                 <Label>Total</Label>
-                <div style={{ fontWeight: 700 }}>{fmtCurrency(view.total || 0)}</div>
+                <div style={{ fontWeight: 700 }}>{formatARS(view.total || 0)}</div>
               </div>
             </div>
+
+            {view.notes && (
+              <div style={{ marginTop: 8 }}>
+                <Label>Notas</Label>
+                <div style={{ color: '#334155', whiteSpace: 'pre-wrap' }}>{view.notes}</div>
+              </div>
+            )}
 
             <div style={{ marginTop: 10, display: 'flex', gap: 10, alignItems: 'center' }}>
               <span
@@ -168,6 +232,20 @@ export default function OrderDetail() {
                 title="Mostrar/ocultar JSON crudo (debug)"
               >
                 {showJson ? 'Ocultar JSON' : 'Ver JSON'}
+              </button>
+              <button
+                onClick={() => refetch()}
+                disabled={isFetching}
+                style={{
+                  border: '1px solid #cbd5e1',
+                  borderRadius: 8,
+                  padding: '6px 10px',
+                  background: isFetching ? '#f1f5f9' : '#fff',
+                  opacity: isFetching ? 0.7 : 1,
+                }}
+                title="Volver a cargar"
+              >
+                {isFetching ? 'Actualizando…' : 'Refrescar'}
               </button>
             </div>
 
@@ -212,8 +290,8 @@ export default function OrderDetail() {
                   <tr key={it.key ?? i} style={{ borderTop: '1px solid #e2e8f0' }}>
                     <td style={{ padding: '10px 8px' }}>{it.product}</td>
                     <td style={{ padding: '10px 8px', textAlign: 'right' }}>{it.qty}</td>
-                    <td style={{ padding: '10px 8px', textAlign: 'right' }}>{fmtCurrency(it.price)}</td>
-                    <td style={{ padding: '10px 8px', textAlign: 'right' }}>{fmtCurrency(it.lineTotal)}</td>
+                    <td style={{ padding: '10px 8px', textAlign: 'right' }}>{formatARS(it.price)}</td>
+                    <td style={{ padding: '10px 8px', textAlign: 'right' }}>{formatARS(it.lineTotal)}</td>
                   </tr>
                 ))}
                 {view.items.length === 0 && (
@@ -225,6 +303,16 @@ export default function OrderDetail() {
                   </tr>
                 )}
               </tbody>
+              <tfoot>
+                <tr style={{ borderTop: '1px solid #e2e8f0', background: '#fafafa' }}>
+                  <td colSpan={3} style={{ padding: '10px 8px', textAlign: 'right', fontWeight: 600 }}>
+                    Subtotal ítems
+                  </td>
+                  <td style={{ padding: '10px 8px', textAlign: 'right', fontWeight: 700 }}>
+                    {formatARS(itemsSum)}
+                  </td>
+                </tr>
+              </tfoot>
             </table>
           </div>
         </>
