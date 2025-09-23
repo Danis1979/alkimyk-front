@@ -30,16 +30,37 @@ const normalizeProduct = (p) => ({
   raw: p,
 });
 
-// --- helpers: probe multiple endpoints and adapt shape ---
+// Intenta múltiples endpoints y salta si el body parece error JSON (cuando http no tira excepción)
 async function getFirstOK(urls) {
   for (const url of urls) {
     try {
-      const { data } = await http.get(url);
+      const res = await http.get(url);
+      const data = res?.data;
+
+      // Heurística: si el wrapper no lanza en 4xx/5xx, el body suele traer statusCode o "Cannot GET ..."
+      const bodyStatus = Number.isFinite(data?.statusCode) ? Number(data.statusCode) : null;
+      const bodyLooksError =
+        (bodyStatus && bodyStatus >= 400) ||
+        (typeof data?.message === 'string' && /cannot\s+get/i.test(data.message)) ||
+        (typeof data?.error === 'string' && /not\s+found/i.test(data.error));
+
+      if (bodyLooksError) {
+        // probar siguiente candidato
+        continue;
+      }
+
+      // Si no parece error, lo damos por bueno
       return { data, url };
     } catch (err) {
-      const st = err?.response?.status;
+      const st = err?.response?.status ?? err?.status;
       // si 404 o 5xx => probamos el siguiente; otros errores se re-lanzan
-      if (st === 404 || (st >= 500 && st < 600)) continue;
+      if (st === 404 || (st >= 500 && st < 600)) {
+        continue;
+      }
+      // a veces fetch/axios pueden tirar TypeError de red; probamos siguiente también
+      if (err?.name === 'TypeError') {
+        continue;
+      }
       throw err;
     }
   }
