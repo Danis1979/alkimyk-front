@@ -1,3 +1,4 @@
+// src/services/masters.service.js
 import { http } from '../lib/http';
 
 const pageMeta = (arr, page, limit, totalMaybe) => {
@@ -5,6 +6,7 @@ const pageMeta = (arr, page, limit, totalMaybe) => {
   return { items: arr, total, page, pages: Math.max(1, Math.ceil(total / limit)) };
 };
 
+// ---------- Normalizadores ----------
 const normalizeClient = (c) => ({
   id: c.id ?? c._id ?? c.code ?? c.email ?? undefined,
   name: c.name ?? c.nombre ?? c.razonSocial ?? '',
@@ -13,6 +15,7 @@ const normalizeClient = (c) => ({
   taxId: c.taxId ?? c.cuit ?? '',
   raw: c,
 });
+
 const normalizeSupplier = (s) => ({
   id: s.id ?? s._id ?? s.code ?? s.email ?? undefined,
   name: s.name ?? s.nombre ?? s.razonSocial ?? '',
@@ -21,6 +24,7 @@ const normalizeSupplier = (s) => ({
   taxId: s.taxId ?? s.cuit ?? '',
   raw: s,
 });
+
 const normalizeProduct = (p) => ({
   id: p.id ?? p._id ?? p.code ?? p.sku ?? undefined,
   sku: p.sku ?? p.code ?? '',
@@ -30,64 +34,112 @@ const normalizeProduct = (p) => ({
   raw: p,
 });
 
-// Intenta múltiples endpoints y salta si el body parece error JSON (cuando http no tira excepción)
-async function getFirstOK(urls) {
+// ---------- Utilidades de fallback ----------
+const isErrorBody = (data) => {
+  // Muchos backends devuelven 200 con { statusCode: 404, message: "Cannot GET /..." }
+  if (!data || typeof data !== 'object') return false;
+  if (Number.isFinite(data.statusCode) && data.statusCode >= 400) return true;
+  if (typeof data.message === 'string' && /^Cannot\s+(GET|POST|PUT|DELETE)\s+/i.test(data.message)) return true;
+  if (typeof data.error === 'string' && data.error.length > 0) {
+    // ej: { error: "Not Found" }
+    return true;
+  }
+  return false;
+};
+
+const itemsArray = (data) => {
+  if (!data) return [];
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data.items)) return data.items;
+  return [];
+};
+
+// Devuelve el primer endpoint que responda con un "shape" útil.
+// Si el GET falla con 404 o 5xx o responde un body de error, continúa con el siguiente.
+async function getWithFallback(urls, { requireItemsArray = false, debugLabel = '' } = {}) {
+  let lastErr = null;
   for (const url of urls) {
     try {
-      const res = await http.get(url);
-      const data = res?.data;
-
-      // Heurística: si el wrapper no lanza en 4xx/5xx, el body suele traer statusCode o "Cannot GET ..."
-      const bodyStatus = Number.isFinite(data?.statusCode) ? Number(data.statusCode) : null;
-      const bodyLooksError =
-        (bodyStatus && bodyStatus >= 400) ||
-        (typeof data?.message === 'string' && /cannot\s+get/i.test(data.message)) ||
-        (typeof data?.error === 'string' && /not\s+found/i.test(data.error));
-
-      if (bodyLooksError) {
-        // probar siguiente candidato
+      const { data } = await http.get(url);
+      // Si el body parece error (aunque sea 200), seguimos probando
+      if (isErrorBody(data)) {
+        if (import.meta?.env?.DEV) console.warn(`[masters][${debugLabel}] Body de error en ${url}`, data);
         continue;
       }
-
-      // Si no parece error, lo damos por bueno
+      // Validación opcional de forma
+      if (requireItemsArray) {
+        const arr = itemsArray(data);
+        if (!Array.isArray(arr)) {
+          if (import.meta?.env?.DEV) console.warn(`[masters][${debugLabel}] Sin items[] en ${url}`);
+          continue;
+        }
+      }
       return { data, url };
     } catch (err) {
-      const st = err?.response?.status ?? err?.status;
-      // si 404 o 5xx => probamos el siguiente; otros errores se re-lanzan
-      if (st === 404 || (st >= 500 && st < 600)) {
+      lastErr = err;
+      const st = err?.response?.status;
+      if (st === 404 || (st >= 500 && st < 600) || !st) {
+        // seguimos con el próximo candidato
+        if (import.meta?.env?.DEV) console.warn(`[masters][${debugLabel}] ${url} => ${st || err?.message}; sigo...`);
         continue;
       }
-      // a veces fetch/axios pueden tirar TypeError de red; probamos siguiente también
-      if (err?.name === 'TypeError') {
+      // Otros códigos: cortamos y propagamos
+      throw err;
+    }
+  }
+  // Si ninguno funcionó, devolvemos nulo y dejamos que cada caller maneje el caso
+  if (import.meta?.env?.DEV) console.warn(`[masters][${debugLabel}] ningún endpoint respondió OK`, { urls, lastErr });
+  return { data: null, url: null };
+}
+
+// POST con fallback a múltiples endpoints (ignora bodies de error y 404)
+async function postFirstOK(endpoints, payload, { debugLabel = '' } = {}) {
+  for (const ep of endpoints) {
+    try {
+      const { data } = await http.post(ep, payload);
+      if (isErrorBody(data)) {
+        if (import.meta?.env?.DEV) console.warn(`[masters][${debugLabel}] Body de error en POST ${ep}`, data);
+        continue;
+      }
+      return data;
+    } catch (err) {
+      const st = err?.response?.status;
+      if (st === 404 || (st >= 500 && st < 600)) {
+        if (import.meta?.env?.DEV) console.warn(`[masters][${debugLabel}] POST ${ep} => ${st}; sigo...`);
         continue;
       }
       throw err;
     }
   }
-  return { data: null, url: null };
+  throw new Error('Ningún endpoint aceptó el POST.');
 }
 
-function itemsArray(data) {
-  return Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
-}
-
-// ===== Clients
+// ===================================================================
+// Clients
+// ===================================================================
 export async function searchClients({ q = '', page = 1, limit = 20 } = {}) {
   const skip = Math.max(0, (page - 1) * limit);
   const qs = new URLSearchParams({ skip: String(skip), take: String(limit) });
   if (q) qs.set('q', q);
 
-  const { data, url: used } = await getFirstOK([
+  // Orden de prueba: nuevo, variante /compat bajo el recurso, variante /compat al tope, fallback sin /search
+  const candidates = [
     `/clients/search?${qs.toString()}`,
-    '/clients',
     `/clients/compat/search?${qs.toString()}`,
     `/compat/clients/search?${qs.toString()}`,
-    '/compat/clients',
-  ]);
+    `/clients?${qs.toString()}`,
+    `/clients/compat?${qs.toString()}`,
+    `/compat/clients?${qs.toString()}`,
+    `/clients`,
+    `/clients/compat`,
+    `/compat/clients`,
+  ];
 
+  const { data, url: used } = await getWithFallback(candidates, { requireItemsArray: false, debugLabel: 'clients' });
   const listN = itemsArray(data).map(normalizeClient);
-  const isSearch = !!(used && used.includes('/search'));
 
+  // Si el usado no fue /search, filtramos/paginamos manual
+  const isSearch = !!(used && used.includes('/search'));
   if (!isSearch) {
     const filtered = q
       ? listN.filter(c => `${c.name} ${c.email} ${c.taxId}`.toLowerCase().includes(q.toLowerCase()))
@@ -97,37 +149,40 @@ export async function searchClients({ q = '', page = 1, limit = 20 } = {}) {
   }
   return pageMeta(listN, page, limit, data?.total ?? listN.length);
 }
+
 export async function createClient(payload) {
-  const endpoints = ['/clients', '/clients/compat', '/compat/clients'];
-  for (const ep of endpoints) {
-    try {
-      const { data } = await http.post(ep, payload);
-      return normalizeClient(data);
-    } catch (err) {
-      if (err?.response?.status === 404) continue;
-      throw err;
-    }
-  }
-  throw new Error('El backend aún no implementa POST /clients.');
+  const data = await postFirstOK(
+    ['/clients', '/clients/compat', '/compat/clients'],
+    payload,
+    { debugLabel: 'clients.create' }
+  );
+  return normalizeClient(data);
 }
 
-// ===== Suppliers
+// ===================================================================
+// Suppliers
+// ===================================================================
 export async function searchSuppliers({ q = '', page = 1, limit = 20 } = {}) {
   const skip = Math.max(0, (page - 1) * limit);
   const qs = new URLSearchParams({ skip: String(skip), take: String(limit) });
   if (q) qs.set('q', q);
 
-  const { data, url: used } = await getFirstOK([
+  const candidates = [
     `/suppliers/search?${qs.toString()}`,
-    '/suppliers',
     `/suppliers/compat/search?${qs.toString()}`,
     `/compat/suppliers/search?${qs.toString()}`,
-    '/compat/suppliers',
-  ]);
+    `/suppliers?${qs.toString()}`,
+    `/suppliers/compat?${qs.toString()}`,
+    `/compat/suppliers?${qs.toString()}`,
+    `/suppliers`,
+    `/suppliers/compat`,
+    `/compat/suppliers`,
+  ];
 
+  const { data, url: used } = await getWithFallback(candidates, { requireItemsArray: false, debugLabel: 'suppliers' });
   const listN = itemsArray(data).map(normalizeSupplier);
-  const isSearch = !!(used && used.includes('/search'));
 
+  const isSearch = !!(used && used.includes('/search'));
   if (!isSearch) {
     const filtered = q
       ? listN.filter(s => `${s.name} ${s.email} ${s.taxId}`.toLowerCase().includes(q.toLowerCase()))
@@ -137,37 +192,40 @@ export async function searchSuppliers({ q = '', page = 1, limit = 20 } = {}) {
   }
   return pageMeta(listN, page, limit, data?.total ?? listN.length);
 }
+
 export async function createSupplier(payload) {
-  const endpoints = ['/suppliers', '/suppliers/compat', '/compat/suppliers'];
-  for (const ep of endpoints) {
-    try {
-      const { data } = await http.post(ep, payload);
-      return normalizeSupplier(data);
-    } catch (err) {
-      if (err?.response?.status === 404) continue;
-      throw err;
-    }
-  }
-  throw new Error('El backend aún no implementa POST /suppliers.');
+  const data = await postFirstOK(
+    ['/suppliers', '/suppliers/compat', '/compat/suppliers'],
+    payload,
+    { debugLabel: 'suppliers.create' }
+  );
+  return normalizeSupplier(data);
 }
 
-// ===== Products
+// ===================================================================
+// Products
+// ===================================================================
 export async function searchProducts({ q = '', page = 1, limit = 20 } = {}) {
   const skip = Math.max(0, (page - 1) * limit);
   const qs = new URLSearchParams({ skip: String(skip), take: String(limit) });
   if (q) qs.set('q', q);
 
-  const { data, url: used } = await getFirstOK([
+  const candidates = [
     `/products/search?${qs.toString()}`,
-    '/products',
     `/products/compat/search?${qs.toString()}`,
     `/compat/products/search?${qs.toString()}`,
-    '/compat/products',
-  ]);
+    `/products?${qs.toString()}`,
+    `/products/compat?${qs.toString()}`,
+    `/compat/products?${qs.toString()}`,
+    `/products`,
+    `/products/compat`,
+    `/compat/products`,
+  ];
 
+  const { data, url: used } = await getWithFallback(candidates, { requireItemsArray: false, debugLabel: 'products' });
   const listN = itemsArray(data).map(normalizeProduct);
-  const isSearch = !!(used && used.includes('/search'));
 
+  const isSearch = !!(used && used.includes('/search'));
   if (!isSearch) {
     const filtered = q
       ? listN.filter(p => `${p.name} ${p.sku}`.toLowerCase().includes(q.toLowerCase()))
@@ -177,16 +235,12 @@ export async function searchProducts({ q = '', page = 1, limit = 20 } = {}) {
   }
   return pageMeta(listN, page, limit, data?.total ?? listN.length);
 }
+
 export async function createProduct(payload) {
-  const endpoints = ['/products', '/products/compat', '/compat/products'];
-  for (const ep of endpoints) {
-    try {
-      const { data } = await http.post(ep, payload);
-      return normalizeProduct(data);
-    } catch (err) {
-      if (err?.response?.status === 404) continue;
-      throw err;
-    }
-  }
-  throw new Error('El backend aún no implementa POST /products.');
+  const data = await postFirstOK(
+    ['/products', '/products/compat', '/compat/products'],
+    payload,
+    { debugLabel: 'products.create' }
+  );
+  return normalizeProduct(data);
 }
