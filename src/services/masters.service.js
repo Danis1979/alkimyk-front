@@ -122,17 +122,34 @@ export async function searchClients({ q = '', page = 1, limit = 20 } = {}) {
   const qs = new URLSearchParams({ skip: String(skip), take: String(limit) });
   if (q) qs.set('q', q);
 
-  // Orden de prueba: nuevo, variante /compat bajo el recurso, variante /compat al tope, fallback sin /search
   const candidates = [
-    `/clients/search?${qs.toString()}`,
-    `/clients/compat/search?${qs.toString()}`,
+    // Prefer /compat first (backend actual)
     `/compat/clients/search?${qs.toString()}`,
-    `/clients?${qs.toString()}`,
-    `/clients/compat?${qs.toString()}`,
+    `/clients/compat/search?${qs.toString()}`,
+    `/clients/search?${qs.toString()}`,
+
+    // Also try with /api prefix (nginx/proxy)
+    `/api/compat/clients/search?${qs.toString()}`,
+    `/api/clients/compat/search?${qs.toString()}`,
+    `/api/clients/search?${qs.toString()}`,
+
+    // Fallback sin /search (listado)
     `/compat/clients?${qs.toString()}`,
-    `/clients`,
-    `/clients/compat`,
+    `/clients/compat?${qs.toString()}`,
+    `/clients?${qs.toString()}`,
+
+    // Con /api prefix
+    `/api/compat/clients?${qs.toString()}`,
+    `/api/clients/compat?${qs.toString()}`,
+    `/api/clients?${qs.toString()}`,
+
+    // Ultra fallback sin paginado
     `/compat/clients`,
+    `/clients/compat`,
+    `/clients`,
+    `/api/compat/clients`,
+    `/api/clients/compat`,
+    `/api/clients`,
   ];
 
   const { data, url: used } = await getWithFallback(candidates, { requireItemsArray: false, debugLabel: 'clients' });
@@ -168,15 +185,33 @@ export async function searchSuppliers({ q = '', page = 1, limit = 20 } = {}) {
   if (q) qs.set('q', q);
 
   const candidates = [
-    `/suppliers/search?${qs.toString()}`,
-    `/suppliers/compat/search?${qs.toString()}`,
+    // Prefer /compat first
     `/compat/suppliers/search?${qs.toString()}`,
-    `/suppliers?${qs.toString()}`,
-    `/suppliers/compat?${qs.toString()}`,
+    `/suppliers/compat/search?${qs.toString()}`,
+    `/suppliers/search?${qs.toString()}`,
+
+    // /api prefix
+    `/api/compat/suppliers/search?${qs.toString()}`,
+    `/api/suppliers/compat/search?${qs.toString()}`,
+    `/api/suppliers/search?${qs.toString()}`,
+
+    // Fallback sin /search
     `/compat/suppliers?${qs.toString()}`,
-    `/suppliers`,
-    `/suppliers/compat`,
+    `/suppliers/compat?${qs.toString()}`,
+    `/suppliers?${qs.toString()}`,
+
+    // Con /api prefix
+    `/api/compat/suppliers?${qs.toString()}`,
+    `/api/suppliers/compat?${qs.toString()}`,
+    `/api/suppliers?${qs.toString()}`,
+
+    // Ultra fallback
     `/compat/suppliers`,
+    `/suppliers/compat`,
+    `/suppliers`,
+    `/api/compat/suppliers`,
+    `/api/suppliers/compat`,
+    `/api/suppliers`,
   ];
 
   const { data, url: used } = await getWithFallback(candidates, { requireItemsArray: false, debugLabel: 'suppliers' });
@@ -211,15 +246,33 @@ export async function searchProducts({ q = '', page = 1, limit = 20 } = {}) {
   if (q) qs.set('q', q);
 
   const candidates = [
-    `/products/search?${qs.toString()}`,
-    `/products/compat/search?${qs.toString()}`,
+    // Prefer /compat first
     `/compat/products/search?${qs.toString()}`,
-    `/products?${qs.toString()}`,
-    `/products/compat?${qs.toString()}`,
+    `/products/compat/search?${qs.toString()}`,
+    `/products/search?${qs.toString()}`,
+
+    // /api prefix
+    `/api/compat/products/search?${qs.toString()}`,
+    `/api/products/compat/search?${qs.toString()}`,
+    `/api/products/search?${qs.toString()}`,
+
+    // Fallback sin /search
     `/compat/products?${qs.toString()}`,
-    `/products`,
-    `/products/compat`,
+    `/products/compat?${qs.toString()}`,
+    `/products?${qs.toString()}`,
+
+    // Con /api prefix
+    `/api/compat/products?${qs.toString()}`,
+    `/api/products/compat?${qs.toString()}`,
+    `/api/products?${qs.toString()}`,
+
+    // Ultra fallback
     `/compat/products`,
+    `/products/compat`,
+    `/products`,
+    `/api/compat/products`,
+    `/api/products/compat`,
+    `/api/products`,
   ];
 
   const { data, url: used } = await getWithFallback(candidates, { requireItemsArray: false, debugLabel: 'products' });
